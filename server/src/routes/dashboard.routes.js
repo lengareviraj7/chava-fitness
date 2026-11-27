@@ -106,11 +106,7 @@ dashboardRouter.get(['/', '/summary'], authenticate, async (req, res, next) => {
       revenuePaise: tp.revenuePaise,
     }));
 
-    // Check if yesterday was closed
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const yesterdayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(yesterday);
-    const yesterdayClose = await DayClose.findOne({ date: yesterdayStr, status: 'active' });
-    const unclosedDayWarning = isOwner && !yesterdayClose;
+    const unclosedDayWarning = false;
 
     const payload = {
       isDemo: false,

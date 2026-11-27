@@ -31,13 +31,12 @@ import { useToast } from '../components/ui/Toast.jsx';
 import { formatINR, paiseToRupees, rupeesToPaise } from '../utils/money.js';
 import { toAsciiDigits } from '../utils/toAsciiDigits.js';
 import { ReturnModal } from '../components/billing/ReturnModal.jsx';
-import { DayCloseTab } from '../components/billing/DayCloseTab.jsx';
 
 export function BillingPage() {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
 
-  const [activeTab, setActiveTab] = useState('new'); // 'new' | 'history' | 'dayClose'
+  const [activeTab, setActiveTab] = useState('new'); // 'new' | 'history'
   const [returnBill, setReturnBill] = useState(null);
 
   const toast = useToast();
@@ -469,14 +468,6 @@ export function BillingPage() {
             }`}
           >
             Bills & Returns
-          </button>
-          <button
-            onClick={() => setActiveTab('dayClose')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
-              activeTab === 'dayClose' ? 'bg-primary text-primary-ink shadow-sm' : 'text-muted hover:text-text'
-            }`}
-          >
-            Day Close
           </button>
         </div>
       </div>
@@ -1131,11 +1122,6 @@ export function BillingPage() {
           )}
         </div>
       )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: DAY CLOSE */}
-      {/* ========================================================================= */}
-      {activeTab === 'dayClose' && <DayCloseTab user={user} />}
 
       {/* ========================================================================= */}
       {/* MODAL / BOTTOM SHEET: NEW CUSTOMER QUICK-ADD */}

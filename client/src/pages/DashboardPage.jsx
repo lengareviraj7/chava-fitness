@@ -56,24 +56,6 @@ export const DashboardPage = () => {
       {/* Real Whey-Protein Artwork Backdrop (Dashboard Route ONLY) */}
       <DashboardBackdrop />
 
-      {/* Slim Single-Line Unclosed Day Warning (Owner Only) */}
-      {data?.unclosedDayWarning && (
-        <div className="relative z-10 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-2xl px-4 py-2.5 flex items-center justify-between gap-3 text-[#F59E0B] backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold truncate">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span className="truncate">
-              Previous business day cash drawer was not closed. Please complete Day Close.
-            </span>
-          </div>
-          <button
-            onClick={() => navigate('/billing')}
-            className="px-3 py-1 rounded-xl bg-[#F59E0B] text-black font-bold text-xs hover:brightness-110 shrink-0 whitespace-nowrap"
-          >
-            Go to Day Close
-          </button>
-        </div>
-      )}
-
       {/* Welcome Header */}
       <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
