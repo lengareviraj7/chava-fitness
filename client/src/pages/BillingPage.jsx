@@ -6,12 +6,15 @@ import {
   Minus,
   Trash2,
   UserCheck,
+  UserPlus,
   CreditCard,
   QrCode,
   DollarSign,
   Printer,
   Share2,
   CheckCircle,
+  Check,
+  AlertCircle,
   X,
   Tag,
   Clock,
@@ -21,9 +24,12 @@ import {
   Lock,
 } from 'lucide-react';
 import { billingApi, customersApi } from '../api/billing.js';
+import { settingsApi } from '../api/settings.js';
 import { productsApi, categoriesApi } from '../api/products.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import { useToast } from '../components/ui/Toast.jsx';
 import { formatINR, paiseToRupees, rupeesToPaise } from '../utils/money.js';
+import { toAsciiDigits } from '../utils/toAsciiDigits.js';
 import { ReturnModal } from '../components/billing/ReturnModal.jsx';
 import { DayCloseTab } from '../components/billing/DayCloseTab.jsx';
 
@@ -33,6 +39,8 @@ export function BillingPage() {
 
   const [activeTab, setActiveTab] = useState('new'); // 'new' | 'history' | 'dayClose'
   const [returnBill, setReturnBill] = useState(null);
+
+  const toast = useToast();
 
   // Catalog State
   const [products, setProducts] = useState([]);
@@ -50,8 +58,20 @@ export function BillingPage() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerResults, setCustomerResults] = useState([]);
+  const [defaultAddress, setDefaultAddress] = useState('Visapur');
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
-  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', gstin: '' });
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', address: 'Visapur' });
+  const [nameError, setNameError] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [addressError, setAddressError] = useState('');
+  const [duplicateConflict, setDuplicateConflict] = useState(null);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+
+  // Field refs
+  const nameInputRef = useRef(null);
+  const phoneInputRef = useRef(null);
+  const addressInputRef = useRef(null);
+  const customerSearchRef = useRef(null);
 
   // Quote / Totals State
   const [quote, setQuote] = useState({
@@ -245,30 +265,116 @@ export function BillingPage() {
     }
   }
 
-  // Customer search
+  // Load Default Customer Address from Settings
   useEffect(() => {
-    if (!customerSearch.trim()) {
+    settingsApi.get().then((res) => {
+      const addr = res.data?.data?.settings?.defaultCustomerAddress;
+      if (addr) setDefaultAddress(addr);
+    }).catch(() => {});
+  }, []);
+
+  function cleanPhone(raw) {
+    if (!raw) return '';
+    let p = toAsciiDigits(String(raw).trim()).replace(/\D/g, '');
+    if (p.length === 12 && p.startsWith('91')) p = p.slice(2);
+    else if (p.length === 11 && p.startsWith('0')) p = p.slice(1);
+    return p;
+  }
+
+  function handleOpenNewCustomerModal(initialName = '', initialPhone = '') {
+    setNewCustomerForm({
+      name: initialName,
+      phone: initialPhone,
+      address: defaultAddress || 'Visapur',
+    });
+    setNameError('');
+    setPhoneError('');
+    setAddressError('');
+    setDuplicateConflict(null);
+    setShowNewCustomerModal(true);
+    setTimeout(() => {
+      if (initialName && !initialPhone) {
+        phoneInputRef.current?.focus();
+      } else {
+        nameInputRef.current?.focus();
+      }
+    }, 50);
+  }
+
+  // Customer search debounced ~250ms
+  useEffect(() => {
+    const q = customerSearch.trim();
+    if (!q) {
       setCustomerResults([]);
       return;
     }
     const timer = setTimeout(() => {
-      customersApi.list({ search: customerSearch.trim() }).then((res) => {
-        setCustomerResults(res.data.data.customers || []);
+      customersApi.lookup(q).then((res) => {
+        setCustomerResults(res.data?.data?.customers || []);
+      }).catch(() => {
+        setCustomerResults([]);
       });
-    }, 200);
+    }, 250);
     return () => clearTimeout(timer);
   }, [customerSearch]);
 
-  async function handleCreateCustomer(e) {
-    e.preventDefault();
+  async function handleSaveCustomer(e) {
+    if (e) e.preventDefault();
+    if (isSavingCustomer) return;
+
+    let valid = true;
+    const trimmedName = newCustomerForm.name.trim().replace(/\s+/g, ' ');
+    if (trimmedName.length < 2 || trimmedName.length > 60) {
+      setNameError('Name must be between 2 and 60 characters');
+      valid = false;
+    } else {
+      setNameError('');
+    }
+
+    const cleanedPhone = cleanPhone(newCustomerForm.phone);
+    if (!/^[6-9]\d{9}$/.test(cleanedPhone)) {
+      setPhoneError('Must be a 10-digit Indian mobile starting with 6, 7, 8, or 9');
+      valid = false;
+    } else {
+      setPhoneError('');
+    }
+
+    const trimmedAddress = (newCustomerForm.address || '').trim();
+    if (!trimmedAddress) {
+      setAddressError('Enter address');
+      valid = false;
+    } else {
+      setAddressError('');
+    }
+
+    if (!valid) return;
+
+    setIsSavingCustomer(true);
+    setDuplicateConflict(null);
+
     try {
-      const res = await customersApi.create(newCustomerForm);
-      setSelectedCustomer(res.data.data.customer);
+      const res = await customersApi.create({
+        name: trimmedName,
+        phone: cleanedPhone,
+        address: trimmedAddress,
+      });
+      const customer = res.data?.data?.customer;
+      setSelectedCustomer(customer);
       setShowNewCustomerModal(false);
-      setNewCustomerForm({ name: '', phone: '', gstin: '' });
+      setNewCustomerForm({ name: '', phone: '', address: defaultAddress || 'Visapur' });
       setCustomerSearch('');
+      toast.success('Customer added');
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
     } catch (err) {
-      alert(err.response?.data?.error?.message || 'Failed to create customer');
+      if (err.response?.status === 409 && err.response?.data?.error?.existingCustomer) {
+        setDuplicateConflict(err.response.data.error.existingCustomer);
+      } else {
+        alert(err.response?.data?.error?.message || 'Failed to create customer');
+      }
+    } finally {
+      setIsSavingCustomer(false);
     }
   }
 
@@ -474,64 +580,163 @@ export function BillingPage() {
           <div className="lg:col-span-5 bg-bg-elevated border border-border rounded-2xl p-4 space-y-4">
             {/* Customer Header */}
             <div className="flex items-center justify-between pb-3 border-b border-border">
-              {selectedCustomer ? (
-                <div className="flex items-center gap-2">
-                  <UserCheck className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="font-bold text-xs text-text">{selectedCustomer.name}</p>
-                    <p className="text-[11px] text-muted">{selectedCustomer.phone}</p>
-                  </div>
-                </div>
-              ) : (
-                <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
-                  <ShoppingBag className="w-4 h-4 text-primary" /> Walk-in Customer
-                </span>
-              )}
-
               <div className="flex items-center gap-2">
-                {selectedCustomer ? (
-                  <button
-                    onClick={() => setSelectedCustomer(null)}
-                    className="text-xs text-muted hover:text-red-400 font-semibold"
-                  >
-                    Clear
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowNewCustomerModal(true)}
-                    className="text-xs text-primary font-semibold hover:underline"
-                  >
-                    + Register
-                  </button>
+                <span className="text-xs font-bold text-text uppercase tracking-wider">Customer</span>
+                {!selectedCustomer && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-surface border border-border text-muted">
+                    Walk-in
+                  </span>
                 )}
               </div>
+
+              {!selectedCustomer && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenNewCustomerModal()}
+                  className="text-xs bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New customer
+                </button>
+              )}
             </div>
 
-            {/* Customer Search Bar (if walk-in) */}
-            {!selectedCustomer && (
+            {/* Attached Customer Card */}
+            {selectedCustomer ? (
+              <div className="bg-surface/60 border border-border rounded-xl p-3 flex items-start justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-primary shrink-0" />
+                    <span className="font-bold text-xs text-text truncate">{selectedCustomer.name}</span>
+                    <span className="text-[11px] font-mono text-muted">{selectedCustomer.phone}</span>
+                  </div>
+                  <p
+                    className="text-[11px] text-muted truncate max-w-[240px]"
+                    title={selectedCustomer.address || 'No address'}
+                  >
+                    {selectedCustomer.address || '—'}
+                  </p>
+                  {selectedCustomer.dueBalancePaise > 0 && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        Pending {formatINR(selectedCustomer.dueBalancePaise)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('history')}
+                        className="text-[10px] text-primary hover:underline font-semibold"
+                      >
+                        Collect due
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomer(null);
+                      setCustomerSearch('');
+                      setTimeout(() => customerSearchRef.current?.focus(), 50);
+                    }}
+                    className="text-xs text-muted hover:text-text px-2 py-1 rounded-lg bg-surface border border-border font-medium"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomer(null)}
+                    className="text-muted hover:text-red-400 p-1 rounded-lg hover:bg-surface"
+                    title="Remove customer (Walk-in)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Customer Search Bar (Walk-in) */
               <div className="relative">
-                <input
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder="Lookup customer by phone or name..."
-                  className="w-full bg-surface border border-border rounded-xl px-3 py-1.5 text-xs text-text placeholder:text-muted/40 focus:outline-none focus:border-primary"
-                />
-                {customerResults.length > 0 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    ref={customerSearchRef}
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (customerResults.length > 0) {
+                          setSelectedCustomer(customerResults[0]);
+                          setCustomerResults([]);
+                          setCustomerSearch('');
+                          searchInputRef.current?.focus();
+                        } else if (customerSearch.trim().length >= 2) {
+                          const typed = customerSearch.trim();
+                          const digits = cleanPhone(typed);
+                          if (digits.length >= 3) {
+                            handleOpenNewCustomerModal('', digits);
+                          } else {
+                            handleOpenNewCustomerModal(typed, '');
+                          }
+                        }
+                      }
+                    }}
+                    placeholder="Search customer (phone or name)..."
+                    className="w-full bg-surface border border-border rounded-xl pl-9 pr-3 py-2 text-xs text-text placeholder:text-muted/40 focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                {/* Dropdown Results */}
+                {customerSearch.trim().length >= 2 && (
                   <div className="absolute left-0 right-0 top-full mt-1 bg-bg-elevated border border-border rounded-xl shadow-xl z-20 overflow-hidden divide-y divide-border">
                     {customerResults.map((c) => (
                       <button
                         key={c._id}
+                        type="button"
                         onClick={() => {
                           setSelectedCustomer(c);
                           setCustomerResults([]);
                           setCustomerSearch('');
+                          searchInputRef.current?.focus();
                         }}
-                        className="w-full text-left p-2.5 text-xs hover:bg-surface flex justify-between"
+                        className="w-full text-left p-2.5 text-xs hover:bg-surface flex items-center justify-between gap-2"
                       >
-                        <span className="font-bold text-text">{c.name}</span>
-                        <span className="text-muted">{c.phone}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-text truncate">{c.name}</span>
+                            <span className="text-muted font-mono">{c.phone}</span>
+                          </div>
+                          {c.address && (
+                            <p className="text-[11px] text-muted truncate max-w-[220px]">{c.address}</p>
+                          )}
+                        </div>
+                        {c.dueBalancePaise > 0 && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                            Pending {formatINR(c.dueBalancePaise)}
+                          </span>
+                        )}
                       </button>
                     ))}
+
+                    {/* No Match Row */}
+                    {customerResults.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const typed = customerSearch.trim();
+                          const digits = cleanPhone(typed);
+                          if (digits.length >= 3) {
+                            handleOpenNewCustomerModal('', digits);
+                          } else {
+                            handleOpenNewCustomerModal(typed, '');
+                          }
+                        }}
+                        className="w-full text-left p-2.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary font-semibold flex items-center justify-between transition-colors"
+                      >
+                        <span>+ Add new customer: "{customerSearch.trim()}"</span>
+                        <span className="text-[10px] bg-primary/20 px-1.5 py-0.5 rounded font-mono">Enter</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -786,6 +991,19 @@ export function BillingPage() {
             <p className="font-mono text-sm font-bold text-primary">{completedBill.billNo}</p>
             <p className="text-xs text-muted">Total: {formatINR(completedBill.grandTotalPaise)}</p>
 
+            {/* Customer Details Snapshot */}
+            {completedBill.customerSnapshot?.phone && (
+              <div className="bg-surface/60 border border-border rounded-xl p-3 text-left space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-text">{completedBill.customerSnapshot.name}</span>
+                  <span className="font-mono text-[11px] text-muted">{completedBill.customerSnapshot.phone}</span>
+                </div>
+                {completedBill.customerSnapshot.address && (
+                  <p className="text-[11px] text-muted line-clamp-2">{completedBill.customerSnapshot.address}</p>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => window.print()}
@@ -814,6 +1032,38 @@ export function BillingPage() {
             >
               Start New Bill
             </button>
+          </div>
+
+          {/* Printable 80mm Receipt */}
+          <div className="hidden print:block print:fixed print:inset-0 print:bg-white print:text-black print:p-6 print:z-[99999]">
+            <div className="max-w-[80mm] mx-auto text-xs font-mono space-y-2">
+              <div className="text-center pb-2 border-b border-black">
+                <h2 className="text-base font-bold">CHAVA FITNESS CLUB</h2>
+                <p>Tax Invoice</p>
+                <p>Bill: {completedBill.billNo}</p>
+              </div>
+              {completedBill.customerSnapshot?.phone && (
+                <div className="pb-2 border-b border-black">
+                  <p className="font-bold">{completedBill.customerSnapshot.name}</p>
+                  <p>Ph: {completedBill.customerSnapshot.phone}</p>
+                  {completedBill.customerSnapshot.address && (
+                    <p className="break-words line-clamp-2">{completedBill.customerSnapshot.address}</p>
+                  )}
+                </div>
+              )}
+              <div className="divide-y divide-dashed divide-black">
+                {completedBill.items?.map((it, idx) => (
+                  <div key={idx} className="flex justify-between py-1">
+                    <span>{it.nameSnapshot} x{it.qty}</span>
+                    <span>{formatINR(it.netPaise)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-2 border-t border-black flex justify-between font-bold text-sm">
+                <span>Total:</span>
+                <span>{formatINR(completedBill.grandTotalPaise)}</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -888,66 +1138,182 @@ export function BillingPage() {
       {activeTab === 'dayClose' && <DayCloseTab user={user} />}
 
       {/* ========================================================================= */}
-      {/* MODAL: QUICK REGISTER CUSTOMER */}
+      {/* MODAL / BOTTOM SHEET: NEW CUSTOMER QUICK-ADD */}
       {/* ========================================================================= */}
       {showNewCustomerModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-sm p-6 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-border">
-              <h3 className="font-bold text-text text-sm">Register Customer</h3>
-              <button onClick={() => setShowNewCustomerModal(false)} className="text-muted hover:text-text">
+        <div
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex md:items-center md:justify-center items-end"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowNewCustomerModal(false);
+          }}
+        >
+          <div className="bg-bg-elevated border border-border w-full md:max-w-md md:rounded-2xl rounded-t-3xl p-6 space-y-4 max-h-[90dvh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="font-bold text-text text-base">New customer</h3>
+              <button
+                type="button"
+                onClick={() => setShowNewCustomerModal(false)}
+                className="text-muted hover:text-text p-1 rounded-lg hover:bg-surface"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateCustomer} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">Name</label>
-                <input
-                  required
-                  value={newCustomerForm.name}
-                  onChange={(e) => setNewCustomerForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Vikram Shinde"
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
-                />
+            {/* 409 Conflict Banner */}
+            {duplicateConflict && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-start gap-2 text-amber-400 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">This number belongs to {duplicateConflict.name}</p>
+                    <p className="text-[11px] text-muted font-mono">
+                      {duplicateConflict.phone} · {duplicateConflict.address || 'No address'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomer(duplicateConflict);
+                      setShowNewCustomerModal(false);
+                      setDuplicateConflict(null);
+                      toast.success('Customer attached to bill');
+                      setTimeout(() => searchInputRef.current?.focus(), 50);
+                    }}
+                    className="flex-1 py-1.5 rounded-lg bg-primary text-primary-ink text-xs font-bold hover:brightness-110"
+                  >
+                    Use this customer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDuplicateConflict(null);
+                      phoneInputRef.current?.focus();
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-muted hover:text-text"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div>
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">Phone</label>
-                <input
-                  required
-                  value={newCustomerForm.phone}
-                  onChange={(e) => setNewCustomerForm((f) => ({ ...f, phone: e.target.value }))}
-                  placeholder="10-digit mobile number"
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
-                />
-              </div>
-
+            <form onSubmit={handleSaveCustomer} className="space-y-3.5">
+              {/* Field 1: Name */}
               <div>
                 <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                  GSTIN (Optional)
+                  Name *
                 </label>
                 <input
-                  value={newCustomerForm.gstin}
-                  onChange={(e) => setNewCustomerForm((f) => ({ ...f, gstin: e.target.value }))}
-                  placeholder="e.g. 27AABCC1234D1Z5"
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                  ref={nameInputRef}
+                  required
+                  value={newCustomerForm.name}
+                  onChange={(e) => {
+                    setNewCustomerForm((f) => ({ ...f, name: e.target.value }));
+                    if (nameError) setNameError('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      phoneInputRef.current?.focus();
+                    }
+                  }}
+                  placeholder="e.g. Ramesh Patil"
+                  className={`w-full bg-bg border ${
+                    nameError ? 'border-red-500' : 'border-border'
+                  } rounded-xl px-3.5 py-2.5 text-sm text-text focus:outline-none focus:border-primary`}
                 />
+                {nameError && <p className="text-xs text-red-400 mt-1">{nameError}</p>}
               </div>
 
-              <div className="flex gap-2 pt-2">
+              {/* Field 2: Mobile Number */}
+              <div>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                  Mobile number *
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3.5 text-xs font-bold text-muted pointer-events-none">
+                    +91
+                  </span>
+                  <input
+                    ref={phoneInputRef}
+                    required
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={newCustomerForm.phone}
+                    onChange={(e) => {
+                      const clean = toAsciiDigits(e.target.value);
+                      setNewCustomerForm((f) => ({ ...f, phone: clean }));
+                      if (phoneError) setPhoneError('');
+                      if (duplicateConflict) setDuplicateConflict(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addressInputRef.current?.focus();
+                      }
+                    }}
+                    placeholder="9876543210"
+                    className={`w-full bg-bg border ${
+                      phoneError ? 'border-red-500' : 'border-border'
+                    } rounded-xl pl-12 pr-10 py-2.5 text-sm font-mono text-text focus:outline-none focus:border-primary`}
+                  />
+                  {/^[6-9]\d{9}$/.test(cleanPhone(newCustomerForm.phone)) && (
+                    <span className="absolute right-3.5 text-primary">
+                      <Check className="w-4 h-4" />
+                    </span>
+                  )}
+                </div>
+                {phoneError && <p className="text-xs text-red-400 mt-1">{phoneError}</p>}
+              </div>
+
+              {/* Field 3: Address */}
+              <div>
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                  Address *
+                </label>
+                <textarea
+                  ref={addressInputRef}
+                  required
+                  rows={2}
+                  maxLength={120}
+                  value={newCustomerForm.address}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    setNewCustomerForm((f) => ({ ...f, address: e.target.value }));
+                    if (addressError) setAddressError('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSaveCustomer();
+                    }
+                  }}
+                  placeholder="e.g. Visapur"
+                  className={`w-full bg-bg border ${
+                    addressError ? 'border-red-500' : 'border-border'
+                  } rounded-xl px-3.5 py-2 text-sm text-text focus:outline-none focus:border-primary resize-none`}
+                />
+                {addressError && <p className="text-xs text-red-400 mt-1">{addressError}</p>}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowNewCustomerModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text"
+                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text hover:bg-surface"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110"
+                  disabled={isSavingCustomer}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  Save Customer
+                  {isSavingCustomer ? 'Saving...' : 'Save and add to bill'}
                 </button>
               </div>
             </form>

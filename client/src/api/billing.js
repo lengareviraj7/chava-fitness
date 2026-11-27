@@ -11,6 +11,7 @@ export const billingApi = {
 };
 
 export const customersApi = {
+  lookup: (q) => api.get('/customers/lookup', { params: { q } }),
   list: (params) => api.get('/customers', { params }),
   getById: (id) => api.get(`/customers/${id}`),
   create: (data) => api.post('/customers', data),

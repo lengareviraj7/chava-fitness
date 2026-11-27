@@ -43,6 +43,7 @@ function ShopProfileTab() {
         { label: 'State', key: 'state' },
         { label: 'Bill Prefix (e.g. CFC)', key: 'billPrefix' },
         { label: 'UPI ID', key: 'upiId' },
+        { label: 'Default Customer Address', key: 'defaultCustomerAddress' },
       ].map(({ label, key }) => (
         <div key={key}>
           <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">{label}</label>

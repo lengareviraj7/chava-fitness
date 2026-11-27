@@ -26,6 +26,7 @@ function CustomerFormModal({ customer, onSave, onClose }) {
   const [form, setForm] = useState({
     name: customer?.name || '',
     phone: customer?.phone || '',
+    address: customer?.address || '',
     gstin: customer?.gstin || '',
     state: customer?.state || 'Maharashtra',
     openingDue: customer ? paiseToRupees(customer.openingDuePaise || 0) : '0',
@@ -41,6 +42,7 @@ function CustomerFormModal({ customer, onSave, onClose }) {
       const payload = {
         name: form.name.trim(),
         phone: form.phone.trim(),
+        address: form.address?.trim() || '',
         gstin: form.gstin.trim(),
         state: form.state.trim(),
         openingDuePaise: rupeesToPaise(form.openingDue),
@@ -90,6 +92,18 @@ function CustomerFormModal({ customer, onSave, onClose }) {
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               placeholder="e.g. 9876543210"
+              className="w-full bg-bg border border-border rounded-xl px-3 py-2.5 text-sm text-text focus:outline-none focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+              Address (Optional)
+            </label>
+            <input
+              maxLength={120}
+              value={form.address}
+              onChange={(e) => setForm({ ...form, address: e.target.value })}
+              placeholder="e.g. Visapur"
               className="w-full bg-bg border border-border rounded-xl px-3 py-2.5 text-sm text-text focus:outline-none focus:border-primary"
             />
           </div>
@@ -595,6 +609,7 @@ export function CustomersPage() {
                         <span className="flex items-center gap-1 font-mono">
                           <Phone className="w-3.5 h-3.5" /> {c.phone}
                         </span>
+                        <span>{c.address || '-'}</span>
                         {c.state && <span>{c.state}</span>}
                         {c.gstin && <span className="font-mono">GST: {c.gstin}</span>}
                       </div>
