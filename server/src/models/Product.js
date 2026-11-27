@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { normalizeDupKey } from '../utils/dupKey.js';
 
 const variantSchema = new mongoose.Schema(
   {
@@ -100,6 +101,19 @@ const productSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    dupKey: {
+      type: String,
+      default: '',
+    },
+    trackExpiry: {
+      type: Boolean,
+      default: true,
+    },
+    lowStockLimit: {
+      type: Number,
+      default: 3,
+      min: 0,
+    },
     variants: [variantSchema],
     isActive: {
       type: Boolean,
@@ -110,11 +124,22 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+productSchema.pre('save', function (next) {
+  if (this.brand || this.name || this.category) {
+    this.dupKey = normalizeDupKey(this.brand, this.name, this.category);
+  }
+  next();
+});
+
 productSchema.index({ name: 'text', brand: 'text', description: 'text' });
 productSchema.index({ 'variants.sku': 1 }, { unique: true });
 productSchema.index(
   { 'variants.barcode': 1 },
   { unique: true, partialFilterExpression: { 'variants.barcode': { $type: 'string', $gt: '' } } }
+);
+productSchema.index(
+  { dupKey: 1 },
+  { unique: true, partialFilterExpression: { isActive: true, dupKey: { $type: 'string', $gt: '' } } }
 );
 
 export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

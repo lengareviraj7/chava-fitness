@@ -30,6 +30,16 @@ export const productController = {
     }
   },
 
+  async getSimilar(req, res) {
+    try {
+      const { name, brand, categoryId } = req.query;
+      const products = await productService.findSimilar({ name, brand, categoryId });
+      return sendSuccess(res, { products });
+    } catch (error) {
+      return sendError(res, error.message);
+    }
+  },
+
   async create(req, res) {
     try {
       const product = await productService.create(req.body);
@@ -58,6 +68,16 @@ export const productController = {
         return sendError(res, 'Product not found', 'NOT_FOUND', 404);
       }
       return sendSuccess(res, product);
+    } catch (error) {
+      return sendError(res, error.message);
+    }
+  },
+
+  async getSimilar(req, res) {
+    try {
+      const { name, brand, categoryId } = req.query;
+      const products = await productService.findSimilar({ name, brand, categoryId });
+      return sendSuccess(res, { products });
     } catch (error) {
       return sendError(res, error.message);
     }

@@ -2,6 +2,7 @@ import { Category } from '../models/Category.js';
 import { Brand } from '../models/Brand.js';
 import { Product } from '../models/Product.js';
 import { StockBatch } from '../models/StockBatch.js';
+import { normalizeDupKey } from '../utils/dupKey.js';
 
 export const sanitizeProductForUser = (productDoc, userRole) => {
   const prod = productDoc.toObject ? productDoc.toObject() : JSON.parse(JSON.stringify(productDoc));
@@ -203,5 +204,93 @@ export const productService = {
   async delete(id) {
     // Soft delete
     return Product.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  },
+
+  async findSimilar({ name = '', brand = '', categoryId = '' }) {
+    if (!name?.trim() && !brand?.trim()) return [];
+
+    const clean = (s) => (s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').trim();
+    const cleanName = clean(name);
+    const cleanBrand = clean(brand);
+
+    // Exact dupKey check
+    const exactDupKey = normalizeDupKey(brand, name, categoryId);
+    const exactProduct = await Product.findOne({ dupKey: exactDupKey, isActive: true })
+      .populate('category', 'name')
+      .lean();
+
+    // Query candidates matching brand words or name words
+    const queryParts = [];
+    if (cleanName) {
+      const words = cleanName.split(/\s+/).filter((w) => w.length > 2);
+      if (words.length > 0) {
+        queryParts.push({ name: { $regex: words.join('|'), $options: 'i' } });
+      }
+    }
+    if (cleanBrand) {
+      queryParts.push({ brand: { $regex: cleanBrand, $options: 'i' } });
+    }
+
+    const filter = { isActive: true };
+    if (queryParts.length > 0) {
+      filter.$or = queryParts;
+    }
+    if (categoryId) {
+      filter.category = categoryId;
+    }
+
+    const candidates = await Product.find(filter)
+      .populate('category', 'name')
+      .limit(20)
+      .lean();
+
+    // Score candidates
+    const results = [];
+    const seenIds = new Set();
+
+    if (exactProduct) {
+      results.push({
+        _id: exactProduct._id,
+        name: exactProduct.name,
+        brand: exactProduct.brand,
+        category: exactProduct.category,
+        dupKey: exactProduct.dupKey,
+        isExactMatch: true,
+        variants: (exactProduct.variants || []).map((v) => ({
+          _id: v._id,
+          flavour: v.flavour,
+          size: v.size,
+          sku: v.sku,
+          mrp: v.mrp,
+          sellingPrice: v.sellingPrice,
+        })),
+      });
+      seenIds.add(exactProduct._id.toString());
+    }
+
+    for (const p of candidates) {
+      if (seenIds.has(p._id.toString())) continue;
+      const isExact = p.dupKey === exactDupKey;
+      results.push({
+        _id: p._id,
+        name: p.name,
+        brand: p.brand,
+        category: p.category,
+        dupKey: p.dupKey,
+        isExactMatch: isExact,
+        variants: (p.variants || []).map((v) => ({
+          _id: v._id,
+          flavour: v.flavour,
+          size: v.size,
+          sku: v.sku,
+          mrp: v.mrp,
+          sellingPrice: v.sellingPrice,
+        })),
+      });
+      seenIds.add(p._id.toString());
+      if (results.length >= 5) break;
+    }
+
+    return results;
   },
 };

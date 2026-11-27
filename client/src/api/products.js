@@ -7,6 +7,7 @@ export const productsApi = {
   update: (id, data) => api.put(`/products/${id}`, data),
   toggleActive: (id) => api.patch(`/products/${id}/toggle-active`),
   delete: (id) => api.delete(`/products/${id}`),
+  getSimilar: (params = {}) => api.get('/products/similar', { params }),
 };
 
 export const categoriesApi = {

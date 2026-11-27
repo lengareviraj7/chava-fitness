@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Package, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Search, Package, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, X, Truck } from 'lucide-react';
 import { productsApi, categoriesApi } from '../api/products.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { formatINR, rupeesToPaise, paiseToRupees } from '../utils/money.js';
@@ -7,6 +8,7 @@ import { formatINR, rupeesToPaise, paiseToRupees } from '../utils/money.js';
 // ---- Product Form Modal ----
 function ProductForm({ product, categories, onSave, onClose, onCategoryCreated }) {
   const isEdit = !!product;
+  const navigate = useNavigate();
   const [form, setForm] = useState(() =>
     product
       ? {
@@ -72,8 +74,77 @@ function ProductForm({ product, categories, onSave, onClose, onCategoryCreated }
   function addVariant() {
     setForm((f) => ({ ...f, variants: [...f.variants, { flavour: '', size: '', sku: '', barcode: '', mrp: '', sellingPrice: '', purchasePrice: '', stock: 0, minStockLevel: 3 }] }));
   }
-  function removeVariant(i) {
-    setForm((f) => ({ ...f, variants: f.variants.filter((_, idx) => idx !== i) }));
+  function handleSaveAndReceiveStock(e) {
+    e.preventDefault();
+    if (!form.name.trim() || form.name.trim().length < 2) {
+      setError('Product name must be between 2 and 80 characters');
+      return;
+    }
+    if (!form.brand.trim()) {
+      setError('Brand is required');
+      return;
+    }
+    if (!form.category) {
+      setError('Category is required');
+      return;
+    }
+    if (form.gstRate === null || form.gstRate === undefined) {
+      setError('GST rate is required');
+      return;
+    }
+
+    const tempProductId = `prod_${Date.now()}`;
+    const selectedCat = categories.find((c) => c._id === form.category);
+    const productPayload = {
+      tempProductId,
+      name: form.name.trim(),
+      brand: form.brand.trim(),
+      category: form.category,
+      categoryName: selectedCat?.name || '',
+      hsn: form.hsn ? form.hsn.trim() : '21069099',
+      gstRate: Number(form.gstRate),
+      lowStockLimit: 3,
+      trackExpiry: true,
+    };
+
+    const variantItems = form.variants.map((v, idx) => {
+      const flavour = v.flavour ? v.flavour.trim() : '';
+      const size = v.size ? v.size.trim() : '';
+      const displayLabel = flavour && size ? `${flavour} (${size})` : flavour || size || 'Standard';
+      const mrp = parseFloat(v.mrp) || 0;
+      const sellingPrice = parseFloat(v.sellingPrice) || mrp;
+      const unitCostRupees = parseFloat(v.purchasePrice) || 0;
+      const qty = Math.max(1, parseInt(v.stock, 10) || 1);
+
+      return {
+        tempProductId,
+        tempVariantId: `var_${Date.now()}_${idx}`,
+        productName: form.name.trim(),
+        brand: form.brand.trim(),
+        flavour,
+        size,
+        displayLabel,
+        barcode: v.barcode ? v.barcode.trim() : '',
+        mrp,
+        sellingPrice,
+        qty,
+        unitCostRupees,
+        batchNo: '',
+        expiryMonth: '',
+        gstRate: Number(form.gstRate),
+        isNewProduct: true,
+      };
+    });
+
+    const draft = {
+      newProducts: [productPayload],
+      newVariants: [],
+      items: variantItems,
+    };
+
+    localStorage.setItem('chava_inward_purchase_draft', JSON.stringify(draft));
+    onClose();
+    navigate('/stock?tab=purchases&action=new');
   }
 
   async function handleSubmit(e) {
@@ -260,9 +331,19 @@ function ProductForm({ product, categories, onSave, onClose, onCategoryCreated }
           </div>
 
           {error && <div className="bg-danger/10 border border-danger/30 text-danger text-xs rounded-xl px-4 py-3">{error}</div>}
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-muted text-sm font-semibold hover:border-primary/40 transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="flex-1 py-3 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60">
+          <div className="flex gap-2 sm:gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl border border-border text-muted text-xs sm:text-sm font-semibold hover:border-primary/40 transition-colors">Cancel</button>
+            {!isEdit && (
+              <button
+                type="button"
+                onClick={handleSaveAndReceiveStock}
+                className="flex-1 py-3 rounded-xl border border-primary/40 bg-primary/10 text-primary text-xs sm:text-sm font-bold hover:bg-primary/20 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Truck className="w-4 h-4 shrink-0" />
+                <span>Save &amp; receive stock</span>
+              </button>
+            )}
+            <button type="submit" disabled={saving} className="flex-1 py-3 rounded-xl bg-primary text-primary-ink text-xs sm:text-sm font-bold hover:brightness-110 transition-all disabled:opacity-60">
               {saving ? 'Saving…' : isEdit ? 'Update Product' : 'Create Product'}
             </button>
           </div>

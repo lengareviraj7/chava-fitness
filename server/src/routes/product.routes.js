@@ -9,6 +9,7 @@ productRouter.get('/brands', brandController.list);
 
 // Products
 productRouter.get('/', optionalAuth, productController.list);
+productRouter.get('/similar', authenticate, requireOwner, productController.getSimilar);
 productRouter.get('/:id', optionalAuth, productController.getById);
 productRouter.post('/', authenticate, requireOwner, productController.create);
 productRouter.put('/:id', authenticate, requireOwner, productController.update);

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Boxes,
   Plus,
@@ -17,11 +18,19 @@ import {
   RotateCcw,
   FileText,
   Trash2,
+  Sparkles,
+  Layers,
+  ShieldAlert,
+  Check,
+  Edit2,
 } from 'lucide-react';
 import { stockApi, purchasesApi, suppliersApi } from '../api/stock.js';
-import { productsApi } from '../api/products.js';
+import { productsApi, categoriesApi, brandsApi } from '../api/products.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import { formatINR, paiseToRupees, rupeesToPaise } from '../utils/money.js';
+import { MonthYearPicker } from '../components/stock/MonthYearPicker.jsx';
+import { NewProductInlinePanel } from '../components/stock/NewProductInlinePanel.jsx';
+import { NewVariantInlinePanel } from '../components/stock/NewVariantInlinePanel.jsx';
 
 export function StockPage() {
   const { user } = useAuth();
@@ -76,8 +85,42 @@ export function StockPage() {
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
-  // Products Cache for Purchase Inward
+  // Products, Categories and Brands Cache for Purchase Inward
+  const [searchParams] = useSearchParams();
   const [productsCache, setProductsCache] = useState([]);
+  const [categoriesCache, setCategoriesCache] = useState([]);
+  const [brandsCache, setBrandsCache] = useState([]);
+
+  const loadPurchaseCatalogs = useCallback(async () => {
+    if (!isOwner) return;
+    try {
+      const [pRes, cRes, bRes] = await Promise.all([
+        productsApi.list({ limit: 150 }),
+        categoriesApi.list(),
+        brandsApi.list(),
+      ]);
+      setProductsCache(pRes.data?.data?.products || []);
+      setCategoriesCache(cRes.data?.data?.categories || []);
+      setBrandsCache(bRes.data?.data?.brands || []);
+    } catch (e) {
+      console.error('Failed to load purchase catalogs:', e);
+    }
+  }, [isOwner]);
+
+  useEffect(() => {
+    loadPurchaseCatalogs();
+  }, [loadPurchaseCatalogs]);
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    const actionParam = searchParams.get('action');
+    if (tabParam === 'purchases' || actionParam === 'new') {
+      setActiveTab('purchases');
+      if (actionParam === 'new') {
+        setShowNewPurchase(true);
+      }
+    }
+  }, [searchParams]);
 
   // Fetch Stock Data
   const loadStock = useCallback(async () => {
@@ -774,11 +817,14 @@ export function StockPage() {
         <NewPurchaseModal
           suppliers={suppliers}
           products={productsCache}
+          categories={categoriesCache}
+          brands={brandsCache}
           onClose={() => setShowNewPurchase(false)}
           onSuccess={() => {
             setShowNewPurchase(false);
             loadPurchases();
             loadStock();
+            loadPurchaseCatalogs();
           }}
           onAddSupplier={() => setShowSupplierModal(true)}
         />
@@ -1102,54 +1148,337 @@ export function StockPage() {
 }
 
 // -----------------------------------------------------------------------------
-// Helper Component: New Purchase Modal
+// Helper Component: Product Search & Combobox Picker
 // -----------------------------------------------------------------------------
-function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSupplier }) {
+function ProductSearchPicker({
+  valueProductId,
+  valueTempProductId,
+  selectedLabel,
+  isNewProduct,
+  products = [],
+  newProducts = [],
+  onSelectExisting,
+  onSelectNewProduct,
+  onOpenNewProductModal,
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapperRef = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const cleanQuery = query.trim().toLowerCase();
+
+  // Filter existing products
+  const matchingExisting = products.filter((p) => {
+    if (!cleanQuery) return true;
+    const matchName = p.name?.toLowerCase().includes(cleanQuery);
+    const matchBrand = p.brand?.toLowerCase().includes(cleanQuery);
+    const matchBarcode = p.variants?.some((v) => v.barcode?.toLowerCase().includes(cleanQuery));
+    return matchName || matchBrand || matchBarcode;
+  });
+
+  // Filter new products in draft
+  const matchingNew = newProducts.filter((p) => {
+    if (!cleanQuery) return true;
+    return p.name?.toLowerCase().includes(cleanQuery) || p.brand?.toLowerCase().includes(cleanQuery);
+  });
+
+  // Check if query is an exact barcode match
+  const exactBarcodeMatch = cleanQuery
+    ? products
+        .flatMap((p) =>
+          p.variants
+            ?.filter((v) => v.barcode?.toLowerCase() === cleanQuery)
+            .map((v) => ({ product: p, variant: v }))
+        )[0]
+    : null;
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <div
+        onClick={() => setOpen(true)}
+        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text flex items-center justify-between cursor-pointer hover:border-primary/50 transition-colors"
+      >
+        <span className={selectedLabel ? 'font-medium text-text truncate' : 'text-muted/60'}>
+          {selectedLabel || 'Select or search product / barcode...'}
+        </span>
+        {isNewProduct ? (
+          <span className="bg-primary/20 text-primary text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded border border-primary/30 shrink-0 ml-1.5">
+            NEW
+          </span>
+        ) : (
+          <Search className="w-3.5 h-3.5 text-muted shrink-0 ml-1.5" />
+        )}
+      </div>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-bg-elevated border border-border rounded-xl shadow-2xl z-50 p-2 space-y-2 max-h-72 overflow-y-auto">
+          {/* Search / Barcode Input */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-muted absolute left-2.5 top-2.5" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Type product name, brand or barcode..."
+              className="w-full bg-bg border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
+            />
+          </div>
+
+          {/* Barcode Quick Jump If Matched */}
+          {exactBarcodeMatch && (
+            <div
+              onClick={() => {
+                onSelectExisting(exactBarcodeMatch.product, exactBarcodeMatch.variant);
+                setOpen(false);
+              }}
+              className="p-2 rounded-lg bg-primary/10 border border-primary/30 cursor-pointer hover:bg-primary/20 flex items-center justify-between"
+            >
+              <div>
+                <p className="text-[11px] font-bold text-primary">Exact Barcode Match Found:</p>
+                <p className="text-xs font-semibold text-text">
+                  {exactBarcodeMatch.product.name} ({exactBarcodeMatch.product.brand})
+                </p>
+                <p className="text-[10px] text-muted">
+                  Variant: {exactBarcodeMatch.variant.flavour} {exactBarcodeMatch.variant.size}
+                </p>
+              </div>
+              <span className="text-[10px] font-bold text-primary px-2 py-1 bg-primary/20 rounded">Select</span>
+            </div>
+          )}
+
+          {/* New Products in Current Inward Draft */}
+          {matchingNew.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold text-muted uppercase tracking-wider block px-1">
+                New Products In Draft
+              </span>
+              {matchingNew.map((np) => (
+                <div
+                  key={np.tempProductId}
+                  onClick={() => {
+                    onSelectNewProduct(np);
+                    setOpen(false);
+                  }}
+                  className="p-2 rounded-lg hover:bg-surface cursor-pointer flex items-center justify-between text-xs"
+                >
+                  <div className="truncate">
+                    <span className="font-bold text-text">{np.name}</span>{' '}
+                    <span className="text-muted">({np.brand})</span>
+                  </div>
+                  <span className="bg-primary/20 text-primary text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded border border-primary/30">
+                    NEW
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Existing Products from Catalogue */}
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider block px-1">
+              Existing Catalogue ({matchingExisting.length})
+            </span>
+            {matchingExisting.slice(0, 20).map((p) => (
+              <div
+                key={p._id}
+                onClick={() => {
+                  onSelectExisting(p, p.variants?.[0]);
+                  setOpen(false);
+                }}
+                className={`p-2 rounded-lg hover:bg-surface cursor-pointer flex items-center justify-between text-xs transition-colors ${
+                  valueProductId === p._id ? 'bg-primary/10 border border-primary/20' : ''
+                }`}
+              >
+                <div className="truncate">
+                  <span className="font-semibold text-text">{p.name}</span>{' '}
+                  <span className="text-muted">({p.brand})</span>
+                </div>
+                <span className="text-[10px] text-muted font-mono">{p.variants?.length || 0} variants</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Zero Results / Barcode Match Nothing */}
+          {matchingExisting.length === 0 && matchingNew.length === 0 && query.trim() && (
+            <div
+              onClick={() => {
+                onOpenNewProductModal({ name: query.trim() });
+                setOpen(false);
+              }}
+              className="p-2.5 rounded-lg bg-surface border border-primary/30 hover:bg-primary/10 cursor-pointer text-xs flex items-center gap-2 text-primary font-bold"
+            >
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span>Create new product: "{query.trim()}"</span>
+            </div>
+          )}
+
+          {/* Fixed Bottom Action: + New product */}
+          <div className="pt-1 border-t border-border">
+            <button
+              type="button"
+              onClick={() => {
+                onOpenNewProductModal(query.trim() ? { name: query.trim() } : {});
+                setOpen(false);
+              }}
+              className="w-full py-2 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-primary/30"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ New product</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Main Component: One-Step Inward Purchase Modal
+// -----------------------------------------------------------------------------
+function NewPurchaseModal({
+  suppliers = [],
+  products = [],
+  categories = [],
+  brands = [],
+  onClose,
+  onSuccess,
+  onAddSupplier,
+}) {
   const [supplierId, setSupplierId] = useState(suppliers[0]?._id || '');
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [paidRupees, setPaidRupees] = useState('');
+  const [paymentMode, setPaymentMode] = useState('cash');
+  const [refNo, setRefNo] = useState('');
+
+  // New products and new variants drafted in this purchase inward
+  const [newProducts, setNewProducts] = useState([]);
+  const [newVariants, setNewVariants] = useState([]);
+
+  // Inward line items
   const [items, setItems] = useState([
     {
-      productId: '',
-      variantId: '',
+      productId: products[0]?._id || '',
+      variantId: products[0]?.variants?.[0]?._id || '',
+      tempProductId: null,
+      tempVariantId: null,
+      productName: products[0]?.name || '',
+      brand: products[0]?.brand || '',
+      variantLabel: products[0]?.variants?.[0]
+        ? `${products[0].variants[0].flavour || ''} ${products[0].variants[0].size || ''}`.trim() || 'Standard'
+        : 'Standard',
+      flavour: products[0]?.variants?.[0]?.flavour || '',
+      size: products[0]?.variants?.[0]?.size || '',
+      barcode: products[0]?.variants?.[0]?.barcode || '',
+      isNewProduct: false,
+      isNewVariant: false,
       qty: 1,
-      unitCostRupees: '',
-      gstRate: 18,
+      unitCostRupees: products[0]?.variants?.[0]?.purchasePrice
+        ? paiseToRupees(products[0].variants[0].purchasePrice)
+        : '',
+      gstRate: products[0]?.gstRate ?? 18,
       batchNo: '',
       expiryMonth: '',
     },
   ]);
-  const [paidRupees, setPaidRupees] = useState('');
-  const [paymentMode, setPaymentMode] = useState('cash');
-  const [refNo, setRefNo] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [draftRestored, setDraftRestored] = useState(false);
 
-  // Item helpers
-  function setItemField(idx, field, val) {
-    setItems((prev) => {
-      const copy = [...prev];
-      copy[idx] = { ...copy[idx], [field]: val };
+  // Sub-panels
+  const [showNewProductModal, setShowNewProductModal] = useState(false);
+  const [newProductInitialData, setNewProductInitialData] = useState({});
+  const [newVariantTargetProduct, setNewVariantTargetProduct] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-      // If productId changed, select first variant
-      if (field === 'productId') {
-        const prod = products.find((p) => p._id === val);
-        if (prod && prod.variants.length > 0) {
-          copy[idx].variantId = prod.variants[0]._id;
-          copy[idx].gstRate = prod.gstRate || 18;
-          copy[idx].unitCostRupees = prod.variants[0].purchasePrice ? paiseToRupees(prod.variants[0].purchasePrice) : '';
+  // 1. Restore draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('chava_inward_purchase_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d.supplierId) setSupplierId(d.supplierId);
+        if (d.supplierInvoiceNo) setSupplierInvoiceNo(d.supplierInvoiceNo);
+        if (d.invoiceDate) setInvoiceDate(d.invoiceDate);
+        if (d.paidRupees !== undefined) setPaidRupees(d.paidRupees);
+        if (d.paymentMode) setPaymentMode(d.paymentMode);
+        if (d.refNo) setRefNo(d.refNo);
+        if (Array.isArray(d.newProducts)) setNewProducts(d.newProducts);
+        if (Array.isArray(d.newVariants)) setNewVariants(d.newVariants);
+        if (Array.isArray(d.items) && d.items.length > 0) {
+          const npList = Array.isArray(d.newProducts) ? d.newProducts : [];
+          const hydratedItems = d.items.map((it) => {
+            if (it.tempProductId && (!it.productName || !it.brand)) {
+              const matchedNp = npList.find((np) => np.tempProductId === it.tempProductId);
+              if (matchedNp) {
+                return {
+                  ...it,
+                  productName: it.productName || matchedNp.name,
+                  brand: it.brand || matchedNp.brand,
+                };
+              }
+            }
+            return it;
+          });
+          setItems(hydratedItems);
         }
+        setDraftRestored(true);
       }
-      return copy;
-    });
-  }
+    } catch (e) {
+      console.warn('Failed to parse draft from localStorage', e);
+    }
+  }, []);
 
-  function addItem() {
-    setItems((prev) => [
-      ...prev,
+  // 2. Autosave draft on change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const draftPayload = {
+        supplierId,
+        supplierInvoiceNo,
+        invoiceDate,
+        paidRupees,
+        paymentMode,
+        refNo,
+        newProducts,
+        newVariants,
+        items,
+      };
+      localStorage.setItem('chava_inward_purchase_draft', JSON.stringify(draftPayload));
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [supplierId, supplierInvoiceNo, invoiceDate, paidRupees, paymentMode, refNo, newProducts, newVariants, items]);
+
+  function handleDiscardDraft() {
+    localStorage.removeItem('chava_inward_purchase_draft');
+    setNewProducts([]);
+    setNewVariants([]);
+    setItems([
       {
         productId: products[0]?._id || '',
-        variantId: products[0]?.variants[0]?._id || '',
+        variantId: products[0]?.variants?.[0]?._id || '',
+        tempProductId: null,
+        tempVariantId: null,
+        productName: products[0]?.name || '',
+        brand: products[0]?.brand || '',
+        variantLabel: 'Standard',
+        flavour: '',
+        size: '',
+        barcode: '',
+        isNewProduct: false,
+        isNewVariant: false,
         qty: 1,
         unitCostRupees: '',
         gstRate: 18,
@@ -1157,13 +1486,198 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
         expiryMonth: '',
       },
     ]);
+    setSupplierInvoiceNo('');
+    setPaidRupees('');
+    setDraftRestored(false);
   }
 
-  function removeItem(idx) {
-    setItems((prev) => prev.filter((_, i) => i !== idx));
+  // Add Row
+  function handleAddRow() {
+    const firstProd = products[0];
+    const firstVar = firstProd?.variants?.[0];
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: firstProd?._id || '',
+        variantId: firstVar?._id || '',
+        tempProductId: null,
+        tempVariantId: null,
+        productName: firstProd?.name || '',
+        brand: firstProd?.brand || '',
+        variantLabel: firstVar
+          ? `${firstVar.flavour || ''} ${firstVar.size || ''}`.trim() || 'Standard'
+          : 'Standard',
+        flavour: firstVar?.flavour || '',
+        size: firstVar?.size || '',
+        barcode: firstVar?.barcode || '',
+        isNewProduct: false,
+        isNewVariant: false,
+        qty: 1,
+        unitCostRupees: firstVar?.purchasePrice ? paiseToRupees(firstVar.purchasePrice) : '',
+        gstRate: firstProd?.gstRate ?? 18,
+        batchNo: '',
+        expiryMonth: '',
+      },
+    ]);
   }
 
-  // Calculated totals
+  // Remove Row (cleans up newProduct if it was the last line)
+  function handleRemoveRow(idx) {
+    const target = items[idx];
+    const newItems = items.filter((_, i) => i !== idx);
+    setItems(newItems);
+
+    if (target.tempProductId) {
+      const stillHasLines = newItems.some((it) => it.tempProductId === target.tempProductId);
+      if (!stillHasLines) {
+        setNewProducts((prev) => prev.filter((np) => np.tempProductId !== target.tempProductId));
+      }
+    }
+    if (target.tempVariantId) {
+      const stillHasLines = newItems.some((it) => it.tempVariantId === target.tempVariantId);
+      if (!stillHasLines) {
+        setNewVariants((prev) => prev.filter((nv) => nv.tempVariantId !== target.tempVariantId));
+      }
+    }
+  }
+
+  function handleItemChange(idx, field, val) {
+    setItems((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return copy;
+    });
+  }
+
+  // Select existing product from search
+  function handleSelectExisting(idx, prod, variant) {
+    setItems((prev) => {
+      const copy = [...prev];
+      const targetVar = variant || prod.variants?.[0];
+      copy[idx] = {
+        ...copy[idx],
+        productId: prod._id,
+        variantId: targetVar?._id || '',
+        tempProductId: null,
+        tempVariantId: null,
+        productName: prod.name,
+        brand: prod.brand,
+        variantLabel: targetVar
+          ? `${targetVar.flavour || ''} ${targetVar.size || ''}`.trim() || 'Standard'
+          : 'Standard',
+        flavour: targetVar?.flavour || '',
+        size: targetVar?.size || '',
+        barcode: targetVar?.barcode || '',
+        isNewProduct: false,
+        isNewVariant: false,
+        gstRate: prod.gstRate ?? 18,
+        unitCostRupees: targetVar?.purchasePrice ? paiseToRupees(targetVar.purchasePrice) : copy[idx].unitCostRupees,
+      };
+      return copy;
+    });
+  }
+
+  // Select draft new product
+  function handleSelectNewProduct(idx, np) {
+    const existingLines = items.filter((it) => it.tempProductId === np.tempProductId);
+    const firstLine = existingLines[0];
+
+    setItems((prev) => {
+      const copy = [...prev];
+      copy[idx] = {
+        ...copy[idx],
+        productId: null,
+        variantId: null,
+        tempProductId: np.tempProductId,
+        tempVariantId: firstLine?.tempVariantId || `var_${Date.now()}`,
+        productName: np.name,
+        brand: np.brand,
+        variantLabel: firstLine?.variantLabel || 'Standard',
+        flavour: firstLine?.flavour || '',
+        size: firstLine?.size || '',
+        barcode: firstLine?.barcode || '',
+        isNewProduct: true,
+        isNewVariant: true,
+        gstRate: np.gstRate ?? 18,
+      };
+      return copy;
+    });
+  }
+
+  // Callback from NewProductInlinePanel
+  function handleNewProductSaved({ product: np, variants: nvars }) {
+    // Save to newProducts
+    setNewProducts((prev) => {
+      const filtered = prev.filter((p) => p.tempProductId !== np.tempProductId);
+      return [...filtered, np];
+    });
+
+    // Create lines for all variants created
+    const createdLines = nvars.map((v) => ({
+      productId: null,
+      variantId: null,
+      tempProductId: np.tempProductId,
+      tempVariantId: v.tempVariantId,
+      productName: np.name,
+      brand: np.brand,
+      variantLabel: v.displayLabel || `${v.flavour || ''} ${v.size || ''}`.trim() || 'Standard',
+      flavour: v.flavour || '',
+      size: v.size || '',
+      barcode: v.barcode || '',
+      mrp: v.mrp,
+      sellingPrice: v.sellingPrice,
+      isNewProduct: true,
+      isNewVariant: true,
+      qty: v.qty || 1,
+      unitCostRupees: v.unitCostRupees,
+      gstRate: np.gstRate,
+      batchNo: v.batchNo,
+      expiryMonth: v.expiryMonth,
+    }));
+
+    // Replace placeholder first row or append
+    setItems((prev) => {
+      const isPlaceholder = prev.length === 1 && !prev[0].batchNo && !prev[0].tempProductId;
+      if (isPlaceholder) {
+        return createdLines;
+      }
+      return [...prev, ...createdLines];
+    });
+
+    setShowNewProductModal(false);
+  }
+
+  // Callback from NewVariantInlinePanel
+  function handleNewVariantSaved(variantData) {
+    setNewVariants((prev) => [...prev, variantData]);
+
+    const newLine = {
+      productId: variantData.productId,
+      variantId: null,
+      tempProductId: null,
+      tempVariantId: variantData.tempVariantId,
+      productName: variantData.productName,
+      brand: variantData.brand,
+      variantLabel: variantData.displayLabel || `${variantData.flavour || ''} ${variantData.size || ''}`.trim() || 'Standard',
+      flavour: variantData.flavour,
+      size: variantData.size,
+      barcode: variantData.barcode,
+      mrp: variantData.mrp,
+      sellingPrice: variantData.sellingPrice,
+      isNewProduct: false,
+      isNewVariant: true,
+      qty: variantData.qty,
+      unitCostRupees: variantData.unitCostRupees,
+      gstRate: variantData.gstRate,
+      batchNo: variantData.batchNo,
+      expiryMonth: variantData.expiryMonth,
+    };
+
+    setItems((prev) => [...prev, newLine]);
+    setNewVariantTargetProduct(null);
+  }
+
+  // Totals calculations
   const subtotalPaise = items.reduce((sum, it) => {
     const q = Number(it.qty) || 0;
     const cost = rupeesToPaise(Number(it.unitCostRupees) || 0);
@@ -1181,71 +1695,190 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
   const initialPaidPaise = Math.min(rupeesToPaise(Number(paidRupees) || 0), totalPaise);
   const duePaise = totalPaise - initialPaidPaise;
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  // Validation before opening confirm modal
+  function handleInitiateSubmit(e) {
+    e?.preventDefault();
+    setError('');
+
     if (!supplierId) {
-      setError('Please select or add a supplier');
+      setError('Please select or add a wholesale supplier');
       return;
     }
     if (!supplierInvoiceNo.trim()) {
       setError('Supplier invoice number is required');
       return;
     }
+    if (items.length === 0) {
+      setError('At least one inward item line is required');
+      return;
+    }
 
+    // Validate all item lines
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const lineNum = i + 1;
+      if (!it.productId && !it.tempProductId) {
+        setError(`Line ${lineNum}: Please select a product or create a new product`);
+        return;
+      }
+      if (Number(it.qty) < 1) {
+        setError(`Line ${lineNum}: Quantity must be at least 1`);
+        return;
+      }
+      if (it.unitCostRupees === '' || isNaN(Number(it.unitCostRupees)) || Number(it.unitCostRupees) < 0) {
+        setError(`Line ${lineNum}: Valid unit cost (excl GST) is required`);
+        return;
+      }
+      if (!it.batchNo?.trim()) {
+        setError(`Line ${lineNum}: Batch number is required`);
+        return;
+      }
+    }
+
+    setShowConfirmModal(true);
+  }
+
+  // Final Atomic Save Request
+  async function handleConfirmAtomicInward() {
     setSaving(true);
     setError('');
 
     try {
       const payload = {
         supplierId,
-        supplierInvoiceNo,
+        supplierInvoiceNo: supplierInvoiceNo.trim(),
         invoiceDate,
         paidPaise: initialPaidPaise,
         paymentMode,
-        refNo,
+        refNo: refNo.trim(),
+        idempotencyKey: `inward_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        newProducts: newProducts.map((p) => {
+          const productLines = items.filter((it) => it.tempProductId === p.tempProductId);
+          return {
+            tempProductId: p.tempProductId,
+            name: p.name.trim(),
+            brand: p.brand.trim(),
+            categoryId: p.category || p.categoryId,
+            hsn: p.hsn ? p.hsn.trim() : '21069099',
+            gstRate: Number(p.gstRate),
+            lowStockLimit: Number(p.lowStockLimit) || 3,
+            trackExpiry: p.trackExpiry !== false,
+            variants: productLines.map((it) => ({
+              tempId: it.tempVariantId,
+              tempVariantId: it.tempVariantId,
+              flavour: it.flavour || 'Standard',
+              size: it.size || 'Standard',
+              barcode: it.barcode ? it.barcode.trim() : null,
+              mrp: it.mrp ? rupeesToPaise(it.mrp) : rupeesToPaise(Number(it.unitCostRupees) * 1.3),
+              sellingPrice: it.sellingPrice
+                ? rupeesToPaise(it.sellingPrice)
+                : rupeesToPaise(Number(it.unitCostRupees) * 1.3),
+            })),
+          };
+        }),
+        newVariants: newVariants.map((v) => ({
+          productId: v.productId,
+          tempId: v.tempVariantId,
+          tempVariantId: v.tempVariantId,
+          flavour: v.flavour || 'Standard',
+          size: v.size || 'Standard',
+          barcode: v.barcode ? v.barcode.trim() : null,
+          mrp: rupeesToPaise(v.mrp || 0),
+          sellingPrice: rupeesToPaise(v.sellingPrice || 0),
+        })),
         items: items.map((it) => ({
-          productId: it.productId,
-          variantId: it.variantId,
+          productId: it.productId || undefined,
+          variantId: it.variantId || undefined,
+          tempProductId: it.tempProductId || undefined,
+          tempVariantId: it.tempVariantId || undefined,
           qty: Number(it.qty),
           unitCostPaise: rupeesToPaise(Number(it.unitCostRupees)),
           gstRate: Number(it.gstRate),
-          batchNo: it.batchNo.trim(),
+          batchNo: it.batchNo.trim().toUpperCase(),
           expiryDate: it.expiryMonth ? `${it.expiryMonth}-01` : null,
         })),
       };
 
       await purchasesApi.create(payload);
+
+      // On successful creation, wipe the draft
+      localStorage.removeItem('chava_inward_purchase_draft');
+      setShowConfirmModal(false);
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.error?.message || 'Failed to inward purchase');
+      setShowConfirmModal(false);
+      setError(
+        err.response?.data?.error?.message ||
+          err.response?.data?.message ||
+          'Failed to record purchase inward. Please review errors.'
+      );
     } finally {
       setSaving(false);
     }
   }
 
+  // Count summaries for confirm dialog
+  const totalUnits = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  const selectedSupplier = suppliers.find((s) => s._id === supplierId);
+
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-3xl p-6 space-y-4 max-h-[92dvh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-3 border-b border-border">
-          <h3 className="font-bold text-text text-lg flex items-center gap-2">
-            <Truck className="w-5 h-5 text-primary" />
-            Inward Stock Purchase
-          </h3>
-          <button onClick={onClose} className="text-muted hover:text-text">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-4xl p-4 sm:p-6 space-y-4 max-h-[94dvh] overflow-y-auto flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-primary/20 text-primary flex items-center justify-center font-bold">
+              <Truck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-text text-base sm:text-lg">Inward Stock Purchase</h3>
+                <span className="text-[10px] text-muted border border-border rounded-full px-2 py-0.5 font-mono">
+                  ONE-STEP INWARD
+                </span>
+              </div>
+              <p className="text-xs text-muted">Unified product creation &amp; stock receipt in one atomic invoice</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl text-muted hover:text-text hover:bg-surface">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {error && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">{error}</div>
+        {/* Draft Notice */}
+        {draftRestored && (
+          <div className="p-3 rounded-xl bg-primary/10 border border-primary/30 text-xs text-text flex items-center justify-between gap-3">
+            <span className="flex items-center gap-2 text-primary font-semibold">
+              <Sparkles className="w-4 h-4 shrink-0" />
+              Restored active draft from previous session
+            </span>
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="text-[11px] text-muted hover:text-red-400 font-semibold underline"
+            >
+              Discard Draft
+            </button>
+          </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Supplier & Invoice Details */}
+        {/* Error Banner */}
+        {error && (
+          <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-start gap-2.5 font-medium">
+            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {/* Form Body */}
+        <form onSubmit={handleInitiateSubmit} className="space-y-4 flex-1">
+          {/* Supplier & Invoice Header Details */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-xs font-semibold text-muted uppercase tracking-wider">Supplier</label>
+                <label className="text-xs font-semibold text-muted uppercase tracking-wider">
+                  Supplier <span className="text-red-400">*</span>
+                </label>
                 <button
                   type="button"
                   onClick={onAddSupplier}
@@ -1260,7 +1893,7 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
                 onChange={(e) => setSupplierId(e.target.value)}
                 className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
               >
-                {suppliers.length === 0 && <option value="">No suppliers found</option>}
+                <option value="">Select Supplier...</option>
                 {suppliers.map((s) => (
                   <option key={s._id} value={s._id}>
                     {s.name} ({s.phone})
@@ -1271,19 +1904,21 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
 
             <div>
               <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                Supplier Invoice No
+                Supplier Invoice No <span className="text-red-400">*</span>
               </label>
               <input
                 required
                 value={supplierInvoiceNo}
                 onChange={(e) => setSupplierInvoiceNo(e.target.value)}
                 placeholder="e.g. INV-2026-981"
-                className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary font-mono"
+                className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary font-mono uppercase"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">Invoice Date</label>
+              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                Invoice Date <span className="text-red-400">*</span>
+              </label>
               <input
                 type="date"
                 required
@@ -1294,68 +1929,149 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
             </div>
           </div>
 
-          {/* Items Section */}
+          {/* Inward Line Items Section */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-muted uppercase tracking-wider">Inward Line Items</span>
-              <button
-                type="button"
-                onClick={addItem}
-                className="text-xs text-primary font-semibold flex items-center gap-1 hover:underline"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Row
-              </button>
+              <span className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                <Boxes className="w-4 h-4 text-primary" /> Inward Line Items ({items.length})
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewProductModal(true)}
+                  className="text-xs text-primary font-bold flex items-center gap-1 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> + New Product
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddRow}
+                  className="text-xs text-text font-semibold flex items-center gap-1 px-3 py-1.5 rounded-xl bg-surface border border-border hover:border-primary/40 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Row
+                </button>
+              </div>
             </div>
 
             {items.map((it, idx) => {
               const prod = products.find((p) => p._id === it.productId);
+              const isNew = it.isNewProduct || it.isNewVariant;
+
               return (
-                <div key={idx} className="bg-surface border border-border rounded-xl p-3 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div
+                  key={idx}
+                  className={`bg-surface border rounded-xl p-3 sm:p-4 space-y-3 transition-colors ${
+                    it.isNewProduct ? 'border-primary/40 bg-primary/[0.02]' : 'border-border'
+                  }`}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Product Search & Picker */}
                     <div>
-                      <label className="block text-[11px] text-muted mb-0.5">Product</label>
-                      <select
-                        required
-                        value={it.productId}
-                        onChange={(e) => setItemField(idx, 'productId', e.target.value)}
-                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
-                      >
-                        <option value="">Select product...</option>
-                        {products.map((p) => (
-                          <option key={p._id} value={p._id}>
-                            {p.name} ({p.brand})
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-[11px] text-muted font-semibold">Product</label>
+                        {it.isNewProduct && (
+                          <span className="bg-primary/20 text-primary text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded border border-primary/30">
+                            NEW PRODUCT
+                          </span>
+                        )}
+                      </div>
+                      <ProductSearchPicker
+                        valueProductId={it.productId}
+                        valueTempProductId={it.tempProductId}
+                        selectedLabel={
+                          it.productName ? `${it.productName} (${it.brand})` : ''
+                        }
+                        isNewProduct={it.isNewProduct}
+                        products={products}
+                        newProducts={newProducts}
+                        onSelectExisting={(p, v) => handleSelectExisting(idx, p, v)}
+                        onSelectNewProduct={(np) => handleSelectNewProduct(idx, np)}
+                        onOpenNewProductModal={(initial) => {
+                          setNewProductInitialData(initial);
+                          setShowNewProductModal(true);
+                        }}
+                      />
                     </div>
 
+                    {/* Variant Selector */}
                     <div>
-                      <label className="block text-[11px] text-muted mb-0.5">Variant</label>
-                      <select
-                        required
-                        value={it.variantId}
-                        onChange={(e) => setItemField(idx, 'variantId', e.target.value)}
-                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
-                      >
-                        {prod?.variants?.map((v) => (
-                          <option key={v._id} value={v._id}>
-                            {v.flavour} ({v.size}) • SKU: {v.sku}
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="text-[11px] text-muted font-semibold">Variant / Flavour</label>
+                        {prod && (
+                          <button
+                            type="button"
+                            onClick={() => setNewVariantTargetProduct(prod)}
+                            className="text-[10px] text-primary font-bold hover:underline"
+                          >
+                            + New flavour / size
+                          </button>
+                        )}
+                      </div>
+
+                      {it.isNewProduct || it.isNewVariant ? (
+                        <div className="w-full bg-bg border border-primary/30 rounded-lg px-2.5 py-1.5 text-xs text-text flex items-center justify-between">
+                          <span className="font-semibold text-text truncate">
+                            {it.variantLabel || `${it.flavour || ''} ${it.size || ''}`.trim() || 'Standard'}
+                          </span>
+                          <span className="bg-primary/20 text-primary text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded">
+                            {it.isNewProduct ? 'NEW' : 'NEW FLAVOUR'}
+                          </span>
+                        </div>
+                      ) : (
+                        <select
+                          required
+                          value={it.variantId}
+                          onChange={(e) => {
+                            if (e.target.value === '__NEW_VARIANT__') {
+                              if (prod) setNewVariantTargetProduct(prod);
+                            } else {
+                              const foundVar = prod?.variants?.find((v) => v._id === e.target.value);
+                              setItems((prev) => {
+                                const copy = [...prev];
+                                copy[idx] = {
+                                  ...copy[idx],
+                                  variantId: e.target.value,
+                                  variantLabel: foundVar
+                                    ? `${foundVar.flavour || ''} ${foundVar.size || ''}`.trim() || 'Standard'
+                                    : 'Standard',
+                                  flavour: foundVar?.flavour || '',
+                                  size: foundVar?.size || '',
+                                  barcode: foundVar?.barcode || '',
+                                  unitCostRupees: foundVar?.purchasePrice
+                                    ? paiseToRupees(foundVar.purchasePrice)
+                                    : copy[idx].unitCostRupees,
+                                };
+                                return copy;
+                              });
+                            }
+                          }}
+                          className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
+                        >
+                          {prod?.variants?.map((v) => (
+                            <option key={v._id} value={v._id}>
+                              {v.flavour} ({v.size}) • SKU: {v.sku}
+                            </option>
+                          ))}
+                          <option value="__NEW_VARIANT__" className="text-primary font-bold">
+                            + New flavour / size...
                           </option>
-                        ))}
-                      </select>
+                        </select>
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-center">
+                  {/* Line Detail Inputs */}
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-center">
                     <div>
                       <label className="block text-[11px] text-muted mb-0.5">Qty</label>
                       <input
                         type="number"
                         min="1"
+                        inputMode="numeric"
                         required
                         value={it.qty}
-                        onChange={(e) => setItemField(idx, 'qty', e.target.value)}
-                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
+                        onChange={(e) => handleItemChange(idx, 'qty', e.target.value)}
+                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono"
                       />
                     </div>
 
@@ -1365,11 +2081,12 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
                         type="number"
                         min="0"
                         step="0.01"
+                        inputMode="decimal"
                         required
                         value={it.unitCostRupees}
-                        onChange={(e) => setItemField(idx, 'unitCostRupees', e.target.value)}
+                        onChange={(e) => handleItemChange(idx, 'unitCostRupees', e.target.value)}
                         placeholder="2200"
-                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary font-mono"
+                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono"
                       />
                     </div>
 
@@ -1377,7 +2094,7 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
                       <label className="block text-[11px] text-muted mb-0.5">GST%</label>
                       <select
                         value={it.gstRate}
-                        onChange={(e) => setItemField(idx, 'gstRate', e.target.value)}
+                        onChange={(e) => handleItemChange(idx, 'gstRate', e.target.value)}
                         className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
                       >
                         {[0, 5, 12, 18, 28].map((r) => (
@@ -1393,27 +2110,27 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
                       <input
                         required
                         value={it.batchNo}
-                        onChange={(e) => setItemField(idx, 'batchNo', e.target.value)}
+                        onChange={(e) => handleItemChange(idx, 'batchNo', e.target.value.toUpperCase())}
                         placeholder="MB-2026-X"
-                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary font-mono uppercase"
+                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono uppercase"
                       />
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <label className="block text-[11px] text-muted mb-0.5">Expiry (MM/YYYY)</label>
-                        <input
-                          type="month"
-                          value={it.expiryMonth}
-                          onChange={(e) => setItemField(idx, 'expiryMonth', e.target.value)}
-                          className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary"
-                        />
-                      </div>
+                    <div className="col-span-1 sm:col-span-1">
+                      <label className="block text-[11px] text-muted mb-0.5">Expiry (MM/YYYY)</label>
+                      <MonthYearPicker
+                        value={it.expiryMonth}
+                        onChange={(val) => handleItemChange(idx, 'expiryMonth', val)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-1.5 pt-4">
                       {items.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removeItem(idx)}
-                          className="text-muted hover:text-red-400 p-1 mt-4"
+                          onClick={() => handleRemoveRow(idx)}
+                          className="p-1.5 rounded-lg text-muted hover:text-red-400 hover:bg-bg transition-colors"
+                          title="Remove Line"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1453,10 +2170,11 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
                   <input
                     type="number"
                     min="0"
+                    inputMode="decimal"
                     value={paidRupees}
                     onChange={(e) => setPaidRupees(e.target.value)}
                     placeholder="0"
-                    className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:border-primary font-mono"
+                    className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono"
                   />
                 </div>
                 <div>
@@ -1476,23 +2194,130 @@ function NewPurchaseModal({ suppliers, products, onClose, onSuccess, onAddSuppli
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-2 pt-2 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text"
+              className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text hover:bg-surface transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving || items.length === 0}
-              className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 disabled:opacity-50"
+              className="flex-1 py-3 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 active:scale-[0.99] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
             >
-              {saving ? 'Recording Inward...' : 'Confirm Purchase Inward'}
+              <span>Confirm Purchase Inward</span>
             </button>
           </div>
         </form>
+
+        {/* Modal: Add New Product Inline Panel */}
+        {showNewProductModal && (
+          <NewProductInlinePanel
+            initialData={newProductInitialData}
+            categories={categories}
+            brands={brands}
+            onSave={handleNewProductSaved}
+            onClose={() => setShowNewProductModal(false)}
+            onSwitchToExisting={(existingProd) => {
+              setShowNewProductModal(false);
+              handleSelectExisting(items.length - 1, existingProd, existingProd.variants?.[0]);
+            }}
+          />
+        )}
+
+        {/* Modal: Add New Variant Inline Panel */}
+        {newVariantTargetProduct && (
+          <NewVariantInlinePanel
+            product={newVariantTargetProduct}
+            onSave={handleNewVariantSaved}
+            onClose={() => setNewVariantTargetProduct(null)}
+          />
+        )}
+
+        {/* Modal: Final Atomic Confirmation Summary */}
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-bg-elevated border border-primary/40 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <h4 className="font-bold text-text text-base flex items-center gap-2">
+                  <Check className="w-5 h-5 text-primary" />
+                  Confirm Purchase Inward
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="p-1 rounded-lg text-muted hover:text-text"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="bg-surface rounded-xl p-3 space-y-1.5 border border-border">
+                  <div className="flex justify-between">
+                    <span className="text-muted">Supplier:</span>
+                    <span className="font-bold text-text">{selectedSupplier?.name || 'Selected Supplier'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Invoice No:</span>
+                    <span className="font-mono font-bold text-text">{supplierInvoiceNo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted">Date:</span>
+                    <span className="text-text">{invoiceDate}</span>
+                  </div>
+                </div>
+
+                <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 space-y-1 text-primary">
+                  <p className="font-bold text-sm">
+                    Creates {newProducts.length} new product{newProducts.length === 1 ? '' : 's'} &amp;{' '}
+                    {newVariants.length} new variant{newVariants.length === 1 ? '' : 's'}
+                  </p>
+                  <p className="text-xs text-text">
+                    Receives <strong className="text-primary font-bold">{totalUnits} units</strong> across{' '}
+                    {items.length} line item{items.length === 1 ? '' : 's'}.
+                  </p>
+                </div>
+
+                <div className="bg-surface rounded-xl p-3 space-y-1 font-mono border border-border">
+                  <div className="flex justify-between text-muted">
+                    <span>Total Inward Value:</span>
+                    <span className="font-bold text-text">{formatINR(totalPaise)}</span>
+                  </div>
+                  <div className="flex justify-between text-muted">
+                    <span>Paid Now:</span>
+                    <span>{formatINR(initialPaidPaise)}</span>
+                  </div>
+                  <div className="flex justify-between text-warning font-bold">
+                    <span>Balance Due:</span>
+                    <span>{formatINR(duePaise)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text"
+                >
+                  Back to Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={handleConfirmAtomicInward}
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 active:scale-[0.99] disabled:opacity-50"
+                >
+                  {saving ? 'Creating & Receiving...' : 'Confirm & Save Inward'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

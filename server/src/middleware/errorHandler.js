@@ -42,6 +42,12 @@ export function errorHandler(err, req, res, _next) {
   if (err.existingCustomer) {
     errorPayload.existingCustomer = err.existingCustomer;
   }
+  if (err.existingProduct) {
+    errorPayload.existingProduct = err.existingProduct;
+  }
+  if (err.similarProducts) {
+    errorPayload.similarProducts = err.similarProducts;
+  }
   return res.status(status).json({
     success: false,
     error: errorPayload,

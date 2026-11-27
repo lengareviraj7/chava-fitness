@@ -20,9 +20,11 @@
     "verify:all": "node server/scripts/verify-all.js",
     "verify:fresh": "node server/scripts/verify-all.js",
     "migrate:customer-address": "node server/scripts/migrate-customer-address.js",
+    "migrate:product-dupkey": "node server/scripts/migrate-product-dupkey.js",
     "hero:build": "node server/scripts/build-hero-assets.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "concurrently": "^8.2.2",
     "sharp": "^0.35.5"
   }
