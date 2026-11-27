@@ -1,0 +1,28 @@
+{
+  "name": "chava-fitness-club-erp",
+  "version": "1.0.0",
+  "description": "Production-grade ERP for Chava Fitness Club supplement retail",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "build:client": "npm run build --workspace=client",
+    "test:server": "npm run test --workspace=server",
+    "test": "npm run test --workspace=server",
+    "test:audit": "npm run test:audit --workspace=server",
+    "test:sim": "npm run test:sim --workspace=server",
+    "test:authz": "npm run test:authz --workspace=server",
+    "verify:all": "node server/scripts/verify-all.js",
+    "verify:fresh": "node server/scripts/verify-all.js",
+    "hero:build": "node server/scripts/build-hero-assets.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "sharp": "^0.35.5"
+  }
+}
