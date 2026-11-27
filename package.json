@@ -19,6 +19,7 @@
     "test:authz": "npm run test:authz --workspace=server",
     "verify:all": "node server/scripts/verify-all.js",
     "verify:fresh": "node server/scripts/verify-all.js",
+    "migrate:customer-address": "node server/scripts/migrate-customer-address.js",
     "hero:build": "node server/scripts/build-hero-assets.js"
   },
   "devDependencies": {

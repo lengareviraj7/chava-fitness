@@ -164,6 +164,7 @@ const billSchema = new mongoose.Schema(
       phone: { type: String, default: '' },
       gstin: { type: String, default: '' },
       state: { type: String, default: 'Maharashtra' },
+      address: { type: String, default: '' },
     },
     gstType: {
       type: String,

@@ -24,6 +24,12 @@ const customerSchema = new mongoose.Schema(
       trim: true,
       default: 'Maharashtra',
     },
+    address: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 120,
+    },
     dueBalancePaise: {
       type: Number,
       default: 0,

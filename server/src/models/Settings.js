@@ -10,6 +10,7 @@ const settingsSchema = new mongoose.Schema(
     state: { type: String, trim: true, default: '' },
     stateCode: { type: String, trim: true, default: '' },
     billPrefix: { type: String, trim: true, default: 'PS' },
+    defaultCustomerAddress: { type: String, trim: true, default: 'Visapur', maxlength: 120 },
     // used for thermal receipt
     upiId: { type: String, trim: true, default: '' },
     footerNote: { type: String, trim: true, default: 'Thank you for shopping with us!' },
