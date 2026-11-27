@@ -2,8 +2,52 @@ import { Customer } from '../models/Customer.js';
 import { CustomerLedger } from '../models/CustomerLedger.js';
 import { Bill } from '../models/Bill.js';
 import { Settings } from '../models/Settings.js';
+import { toAsciiDigits } from '../utils/toAsciiDigits.js';
+
+export function normalizeCustomerPhone(rawPhone) {
+  if (!rawPhone) return '';
+  let p = toAsciiDigits(String(rawPhone).trim());
+  p = p.replace(/\D/g, '');
+  if (p.length === 12 && p.startsWith('91')) {
+    p = p.slice(2);
+  } else if (p.length === 11 && p.startsWith('0')) {
+    p = p.slice(1);
+  }
+  return p;
+}
+
+export function normalizeCustomerName(rawName) {
+  if (!rawName) return '';
+  return String(rawName).trim().replace(/\s+/g, ' ').normalize('NFC');
+}
 
 export const customerService = {
+  async lookup(q) {
+    if (!q || typeof q !== 'string') return [];
+    const query = q.trim();
+    if (!query) return [];
+
+    const asciiDigits = toAsciiDigits(query).replace(/\D/g, '');
+    let filter = { isActive: true };
+
+    if (asciiDigits.length >= 3) {
+      filter.phone = { $regex: asciiDigits };
+    } else if (query.length >= 2) {
+      const escaped = query.normalize('NFC').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.name = { $regex: escaped, $options: 'i' };
+    } else {
+      return [];
+    }
+
+    const customers = await Customer.find(filter)
+      .select('_id name phone address dueBalancePaise')
+      .sort({ dueBalancePaise: -1, name: 1 })
+      .limit(8)
+      .lean();
+
+    return customers;
+  },
+
   async list({ search = '', hasDues = false, page = 1, limit = 50 } = {}) {
     const filter = { isActive: true };
     if (search) {
@@ -34,15 +78,48 @@ export const customerService = {
   },
 
   async findByPhone(phone) {
-    return Customer.findOne({ phone: phone.trim() });
+    const normalized = normalizeCustomerPhone(phone);
+    return Customer.findOne({ phone: normalized || phone.trim() });
   },
 
   async create(data) {
-    const existing = await Customer.findOne({ phone: data.phone.trim() });
-    if (existing) return existing;
+    const name = normalizeCustomerName(data.name);
+    if (!name || name.length < 2 || name.length > 60) {
+      const err = new Error('Customer name must be between 2 and 60 characters');
+      err.statusCode = 400;
+      err.code = 'CUSTOMER_NAME_INVALID';
+      throw err;
+    }
+
+    const phone = normalizeCustomerPhone(data.phone);
+    if (!/^[6-9]\d{9}$/.test(phone)) {
+      const err = new Error('Invalid mobile number. Must be a 10-digit Indian mobile number starting with 6, 7, 8, or 9.');
+      err.statusCode = 400;
+      err.code = 'CUSTOMER_PHONE_INVALID';
+      throw err;
+    }
+
+    const existing = await Customer.findOne({ phone });
+    if (existing) {
+      const err = new Error(`A customer with this mobile number already exists: ${existing.name}`);
+      err.statusCode = 409;
+      err.code = 'CUSTOMER_PHONE_EXISTS';
+      err.existingCustomer = {
+        _id: existing._id,
+        name: existing.name,
+        phone: existing.phone,
+        address: existing.address || '',
+        dueBalancePaise: existing.dueBalancePaise || 0,
+      };
+      throw err;
+    }
+
+    const address = data.address ? String(data.address).trim().normalize('NFC').slice(0, 120) : '';
+
     return Customer.create({
-      name: data.name.trim(),
-      phone: data.phone.trim(),
+      name,
+      phone,
+      address,
       gstin: data.gstin?.trim() || '',
       state: data.state?.trim() || 'Maharashtra',
       openingDuePaise: data.openingDuePaise || 0,
@@ -51,7 +128,18 @@ export const customerService = {
   },
 
   async update(id, data) {
-    const customer = await Customer.findByIdAndUpdate(id, data, { new: true });
+    const updateData = { ...data };
+    if (updateData.name) {
+      updateData.name = normalizeCustomerName(updateData.name);
+    }
+    if (updateData.phone) {
+      updateData.phone = normalizeCustomerPhone(updateData.phone);
+    }
+    if (updateData.address !== undefined) {
+      updateData.address = updateData.address ? String(updateData.address).trim().normalize('NFC').slice(0, 120) : '';
+    }
+
+    const customer = await Customer.findByIdAndUpdate(id, updateData, { new: true });
     if (!customer) {
       const err = new Error('Customer not found');
       err.statusCode = 404;

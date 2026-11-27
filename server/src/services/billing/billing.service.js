@@ -84,6 +84,7 @@ export const billingService = {
       phone: '',
       gstin: '',
       state: settings.state || 'Maharashtra',
+      address: '',
     };
 
     if (customerId) {
@@ -94,6 +95,7 @@ export const billingService = {
           phone: customer.phone,
           gstin: customer.gstin || '',
           state: customer.state || settings.state || 'Maharashtra',
+          address: customer.address || '',
         };
       }
     }

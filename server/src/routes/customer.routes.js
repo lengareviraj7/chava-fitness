@@ -6,6 +6,7 @@ export const customerRouter = Router();
 
 customerRouter.use(authenticate);
 
+customerRouter.get('/lookup', customerController.lookup);
 customerRouter.get('/', customerController.list);
 customerRouter.post('/', customerController.create);
 customerRouter.get('/reminders', customerController.getReminders);

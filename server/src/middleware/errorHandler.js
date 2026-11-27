@@ -35,11 +35,15 @@ export function errorHandler(err, req, res, _next) {
   }
 
   const status = err.statusCode || err.status || 500;
+  const errorPayload = {
+    message: status < 500 ? err.message : 'Internal server error',
+    code: err.code || 'SERVER_ERROR',
+  };
+  if (err.existingCustomer) {
+    errorPayload.existingCustomer = err.existingCustomer;
+  }
   return res.status(status).json({
     success: false,
-    error: {
-      message: status < 500 ? err.message : 'Internal server error',
-      code: err.code || 'SERVER_ERROR',
-    },
+    error: errorPayload,
   });
 }

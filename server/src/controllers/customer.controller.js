@@ -3,6 +3,16 @@ import { dueService } from '../services/billing/due.service.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 
 export const customerController = {
+  async lookup(req, res, next) {
+    try {
+      const { q } = req.query;
+      const customers = await customerService.lookup(q);
+      return sendSuccess(res, { customers });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async list(req, res, next) {
     try {
       const { search, hasDues, page, limit } = req.query;
