@@ -1,10 +1,15 @@
+import mongoose from 'mongoose';
 import { fileURLToPath } from 'url';
 import { connectDB, disconnectDB } from '../src/config/db.js';
 import { Settings } from '../src/models/Settings.js';
 
 export async function runMigration() {
   console.log('--- Starting Migration: defaultCustomerAddress ---');
-  await connectDB();
+  let openedLocally = false;
+  if (mongoose.connection.readyState === 0) {
+    await connectDB();
+    openedLocally = true;
+  }
 
   try {
     let settings = await Settings.findOne();
@@ -25,7 +30,9 @@ export async function runMigration() {
     console.log('Migration complete. Existing customers and bills left intact.');
     return { success: true, defaultCustomerAddress: settings.defaultCustomerAddress };
   } finally {
-    await disconnectDB();
+    if (openedLocally) {
+      await disconnectDB();
+    }
   }
 }
 
