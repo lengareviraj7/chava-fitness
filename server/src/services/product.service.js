@@ -53,6 +53,16 @@ export const productService = {
       Product.countDocuments(query),
     ]);
 
+    // Enrich variants with real-time StockBatch total
+    for (const p of products) {
+      if (Array.isArray(p.variants)) {
+        for (const v of p.variants) {
+          const batches = await StockBatch.find({ variantId: v._id, qtyLeft: { $gt: 0 } });
+          v.stock = batches.reduce((sum, b) => sum + (b.qtyLeft || 0), 0);
+        }
+      }
+    }
+
     // Apply stockStatus filter in memory if specified
     let filtered = products.map((p) => sanitizeProductForUser(p, userRole));
 
@@ -79,6 +89,12 @@ export const productService = {
   async getById(id, userRole = 'staff') {
     const product = await Product.findById(id).populate('category', 'name');
     if (!product) return null;
+    if (Array.isArray(product.variants)) {
+      for (const v of product.variants) {
+        const batches = await StockBatch.find({ variantId: v._id, qtyLeft: { $gt: 0 } });
+        v.stock = batches.reduce((sum, b) => sum + (b.qtyLeft || 0), 0);
+      }
+    }
     return sanitizeProductForUser(product, userRole);
   },
 
