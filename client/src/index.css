@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --bg: #050805;
     --bg-elevated: #0B110C;
     --surface: rgba(255,255,255,0.04);
@@ -22,17 +23,34 @@
   }
 
   html {
+    color-scheme: dark;
     background: var(--bg);
     color: var(--text);
     min-height: 100dvh;
   }
 
   body {
+    color-scheme: dark;
     background: var(--bg);
     color: var(--text);
     font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100dvh;
+  }
+
+  /* Form elements dark theme default */
+  select, input, textarea {
+    color-scheme: dark;
+  }
+
+  select option {
+    background-color: #0E1610;
+    color: #F4F7F1;
+  }
+
+  select option:checked {
+    background-color: #17241A;
+    color: #B6F23B;
   }
 
   /* Custom scrollbar */

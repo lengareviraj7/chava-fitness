@@ -582,7 +582,7 @@ export function StockPage() {
                       {variantMovements.map((m) => (
                         <div
                           key={m._id}
-                          className="bg-surface/50 border border-border/60 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                          className="bg-[#0D140F] border border-border rounded-lg p-2.5 flex items-center justify-between text-xs"
                         >
                           <div className="flex items-center gap-2">
                             {m.qty > 0 ? (
@@ -874,7 +874,7 @@ export function StockPage() {
               ))}
             </div>
 
-            <div className="bg-surface/60 rounded-xl p-3 text-xs space-y-1 font-mono">
+            <div className="bg-[#0D140F] border border-border rounded-xl p-3.5 text-xs space-y-1.5 font-mono">
               <div className="flex justify-between text-muted">
                 <span>Subtotal (Excl GST):</span>
                 <span>{formatINR(selectedPurchase.subtotalPaise)}</span>

@@ -25,8 +25,8 @@ export const Input = React.forwardRef(({
         <input
           ref={ref}
           className={cn(
-            "w-full bg-bg-secondary/80 border border-border-theme rounded-lg px-3.5 py-2.5 text-text-main text-sm",
-            "placeholder:text-text-muted/60 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary",
+            "w-full bg-bg border border-border rounded-lg px-3.5 py-2.5 text-text text-sm",
+            "placeholder:text-muted/60 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary",
             "transition-colors duration-150 min-h-[44px]",
             Icon && "pl-10",
             error && "border-danger focus:border-danger focus:ring-danger",
@@ -61,8 +61,8 @@ export const Select = React.forwardRef(({
       <select
         ref={ref}
         className={cn(
-          "w-full bg-bg-secondary/80 border border-border-theme rounded-lg px-3.5 py-2.5 text-text-main text-sm",
-          "focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary",
+          "w-full bg-bg border border-border rounded-lg px-3.5 py-2.5 text-text text-sm",
+          "focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary",
           "transition-colors duration-150 min-h-[44px]",
           error && "border-danger focus:border-danger",
           className
@@ -70,7 +70,7 @@ export const Select = React.forwardRef(({
         {...props}
       >
         {children ? children : options.map((opt) => (
-          <option key={opt.value} value={opt.value} className="bg-bg-secondary text-text-main">
+          <option key={opt.value} value={opt.value} className="bg-[#0E1610] text-text">
             {opt.label}
           </option>
         ))}

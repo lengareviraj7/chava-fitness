@@ -411,7 +411,7 @@ function CustomerLedgerModal({ customer, onClose }) {
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {ledger.map((entry) => (
-                    <tr key={entry._id} className="hover:bg-surface/50">
+                    <tr key={entry._id} className="hover:bg-surface-strong transition-colors">
                       <td className="p-3 text-muted">
                         {new Date(entry.createdAt).toLocaleDateString('en-IN', {
                           day: '2-digit',

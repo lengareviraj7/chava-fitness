@@ -86,7 +86,7 @@ export function ReturnModal({ bill, user, onClose, onSuccess }) {
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-lg max-h-[90dvh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-border flex items-center justify-between bg-surface/50">
+        <div className="p-4 border-b border-border flex items-center justify-between bg-[#0D140F]">
           <div>
             <h3 className="font-bold text-text text-base">Process Bill Return</h3>
             <p className="text-xs text-muted font-mono">Original Bill: {bill.billNo}</p>

@@ -593,12 +593,12 @@ export function BillingPage() {
 
             {/* Attached Customer Card */}
             {selectedCustomer ? (
-              <div className="bg-surface/60 border border-border rounded-xl p-3 flex items-start justify-between gap-3">
+              <div className="bg-[#0D140F] border border-border rounded-xl p-3 flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <UserCheck className="w-4 h-4 text-primary shrink-0" />
-                    <span className="font-bold text-xs text-text truncate">{selectedCustomer.name}</span>
-                    <span className="text-[11px] font-mono text-muted">{selectedCustomer.phone}</span>
+                    <span className="font-bold text-xs text-white truncate">{selectedCustomer.name}</span>
+                    <span className="text-[11px] font-mono text-primary/90 font-medium">{selectedCustomer.phone}</span>
                   </div>
                   <p
                     className="text-[11px] text-muted truncate max-w-[240px]"
@@ -630,14 +630,14 @@ export function BillingPage() {
                       setCustomerSearch('');
                       setTimeout(() => customerSearchRef.current?.focus(), 50);
                     }}
-                    className="text-xs text-muted hover:text-text px-2 py-1 rounded-lg bg-surface border border-border font-medium"
+                    className="text-xs text-text hover:text-primary px-2.5 py-1 rounded-lg bg-surface hover:bg-surface-strong border border-border font-semibold transition-colors"
                   >
                     Change
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedCustomer(null)}
-                    className="text-muted hover:text-red-400 p-1 rounded-lg hover:bg-surface"
+                    className="text-muted hover:text-red-400 p-1 rounded-lg hover:bg-surface-strong transition-colors"
                     title="Remove customer (Walk-in)"
                   >
                     <X className="w-4 h-4" />
@@ -801,7 +801,7 @@ export function BillingPage() {
                   <select
                     value={billDiscountType}
                     onChange={(e) => setBillDiscountType(e.target.value)}
-                    className="bg-surface border border-border rounded-lg px-2 py-1 text-xs text-text focus:outline-none"
+                    className="bg-[#0D140F] border border-border rounded-lg px-2.5 py-1 text-xs text-text font-medium focus:outline-none focus:border-primary transition-colors"
                   >
                     <option value="none">None</option>
                     <option value="pct">Percent (%)</option>
@@ -814,36 +814,36 @@ export function BillingPage() {
                       value={billDiscountValue}
                       onChange={(e) => setBillDiscountValue(e.target.value)}
                       placeholder={billDiscountType === 'pct' ? '5%' : '₹100'}
-                      className="w-20 bg-bg border border-border rounded-lg px-2 py-1 text-xs text-text font-mono focus:outline-none focus:border-primary"
+                      className="w-20 bg-[#0D140F] border border-border rounded-lg px-2 py-1 text-xs text-text font-mono focus:outline-none focus:border-primary"
                     />
                   )}
                 </div>
 
                 {/* Totals Breakdown */}
-                <div className="bg-surface/50 border border-border rounded-xl p-3 font-mono text-xs space-y-1">
+                <div className="bg-[#0D140F] border border-border rounded-xl p-3.5 font-mono text-xs space-y-2">
                   <div className="flex justify-between text-muted">
-                    <span>Subtotal:</span>
-                    <span>{formatINR(quote.subtotalPaise)}</span>
+                    <span className="font-semibold text-muted">Subtotal:</span>
+                    <span className="text-white font-semibold">{formatINR(quote.subtotalPaise)}</span>
                   </div>
                   {quote.totalDiscountPaise > 0 && (
-                    <div className="flex justify-between text-primary">
+                    <div className="flex justify-between text-primary font-bold">
                       <span>Discount:</span>
                       <span>-{formatINR(quote.totalDiscountPaise)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-muted">
-                    <span>GST (CGST+SGST):</span>
-                    <span>{formatINR(quote.totalGstPaise)}</span>
+                    <span className="font-semibold text-muted">GST (CGST+SGST):</span>
+                    <span className="text-white font-semibold">{formatINR(quote.totalGstPaise)}</span>
                   </div>
                   {quote.roundOffPaise !== 0 && (
-                    <div className="flex justify-between text-muted/60 text-[11px]">
+                    <div className="flex justify-between text-muted/70 text-[11px]">
                       <span>Round Off:</span>
-                      <span>{quote.roundOffPaise > 0 ? `+${quote.roundOffPaise}p` : `${quote.roundOffPaise}p`}</span>
+                      <span className="text-white/80">{quote.roundOffPaise > 0 ? `+${quote.roundOffPaise}p` : `${quote.roundOffPaise}p`}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-base font-black text-text pt-1.5 border-t border-border/80">
-                    <span>Grand Total:</span>
-                    <span className="text-primary">{formatINR(quote.grandTotalPaise)}</span>
+                  <div className="flex justify-between text-base font-black text-text pt-2 border-t border-border/80 items-center">
+                    <span className="text-white text-sm font-bold tracking-tight">Grand Total:</span>
+                    <span className="text-primary text-xl font-black">{formatINR(quote.grandTotalPaise)}</span>
                   </div>
                 </div>
 
@@ -910,7 +910,7 @@ export function BillingPage() {
 
             {/* Tendered Change Calculator if Cash */}
             {paymentMode === 'cash' && (
-              <div className="space-y-2 bg-surface/50 p-3 rounded-xl border border-border">
+              <div className="space-y-2 bg-[#0D140F] p-3.5 rounded-xl border border-border">
                 <label className="block text-xs font-semibold text-muted uppercase tracking-wider">
                   Cash Tendered (₹)
                 </label>
@@ -984,10 +984,10 @@ export function BillingPage() {
 
             {/* Customer Details Snapshot */}
             {completedBill.customerSnapshot?.phone && (
-              <div className="bg-surface/60 border border-border rounded-xl p-3 text-left space-y-1">
+              <div className="bg-[#0D140F] border border-border rounded-xl p-3.5 text-left space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-text">{completedBill.customerSnapshot.name}</span>
-                  <span className="font-mono text-[11px] text-muted">{completedBill.customerSnapshot.phone}</span>
+                  <span className="font-bold text-xs text-white">{completedBill.customerSnapshot.name}</span>
+                  <span className="font-mono text-[11px] text-primary font-medium">{completedBill.customerSnapshot.phone}</span>
                 </div>
                 {completedBill.customerSnapshot.address && (
                   <p className="text-[11px] text-muted line-clamp-2">{completedBill.customerSnapshot.address}</p>
