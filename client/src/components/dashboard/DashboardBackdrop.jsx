@@ -61,7 +61,7 @@ export function DashboardBackdrop() {
               alt="Whey Protein Hero Artwork"
               width="2000"
               height="1000"
-              fetchPriority="high"
+              fetchpriority="high"
               decoding="async"
               onError={() => setImgFailed(true)}
               className="w-full h-full object-cover object-[55%_48%] opacity-90 md:opacity-100"
