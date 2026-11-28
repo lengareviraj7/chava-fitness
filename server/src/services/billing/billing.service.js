@@ -34,7 +34,7 @@ export const billingService = {
         qty: Number(item.qty) || 1,
         unitPricePaise: item.priceOverridden ? Number(item.unitPricePaise) : variant.sellingPrice,
         mrpPaise: variant.mrp,
-        gstRate: item.gstRate ?? product.gstRate ?? 18,
+        gstRate: item.gstRate !== undefined ? item.gstRate : (product.gstRate !== undefined ? product.gstRate : 0),
         lineDiscount: item.lineDiscount || null,
         costPaise: variant.purchasePrice || 0,
       });
@@ -177,7 +177,7 @@ export const billingService = {
         unitPricePaise,
         priceOverridden,
         lineDiscount: line.lineDiscount || null,
-        gstRate: product.gstRate || 18,
+        gstRate: product.gstRate !== undefined ? product.gstRate : 0,
         allocations,
         costTotalPaise,
         costPaise: Math.round(costTotalPaise / qty),

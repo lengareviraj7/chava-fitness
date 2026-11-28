@@ -167,7 +167,7 @@ export const reportingService = {
       } else {
         // Group items by GST rate
         for (const item of b.items) {
-          const rate = item.gstRate || 18;
+          const rate = item.gstRate !== undefined ? item.gstRate : 0;
           if (!b2csByRate[rate]) {
             b2csByRate[rate] = {
               gstRate: rate,

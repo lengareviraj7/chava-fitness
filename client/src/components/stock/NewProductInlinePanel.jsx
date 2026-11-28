@@ -20,7 +20,7 @@ export function NewProductInlinePanel({
   const [brand, setBrand] = useState(initialData.brand || '');
   const [categoryId, setCategoryId] = useState(initialData.categoryId || categories[0]?._id || '');
   const [hsn, setHsn] = useState(initialData.hsn || '21069099');
-  const [gstRate, setGstRate] = useState(initialData.gstRate !== undefined ? initialData.gstRate : null); // NO DEFAULT SELECTED
+  const [gstRate, setGstRate] = useState(initialData.gstRate !== undefined ? initialData.gstRate : 0); // Default 0% (option kept)
   const [lowStockLimit, setLowStockLimit] = useState(initialData.lowStockLimit ?? 3);
   const [trackExpiry, setTrackExpiry] = useState(initialData.trackExpiry ?? true);
 
@@ -145,10 +145,7 @@ export function NewProductInlinePanel({
       setError('Please select a category');
       return;
     }
-    if (gstRate === null || gstRate === undefined) {
-      setError('Please select a GST % (required)');
-      return;
-    }
+    const resolvedGstRate = (gstRate === null || gstRate === undefined) ? 0 : gstRate;
 
     // Check exact match block
     if (similarCheck.exactMatch) {
@@ -366,14 +363,17 @@ export function NewProductInlinePanel({
               </div>
             </div>
 
-            {/* GST % Segmented Selection (Mandatory choice, NO default) */}
+            {/* GST % Segmented Selection (Defaults to 0%, option to change kept) */}
             <div className="pt-1">
-              <label className="block text-muted font-semibold mb-1.5">
-                GST Rate (%) <span className="text-red-400">* (Select one)</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-muted font-semibold text-xs">
+                  GST Rate (%)
+                </label>
+                <span className="text-[10px] text-muted font-medium">Default: 0% (Non-GST registered)</span>
+              </div>
               <div className="grid grid-cols-5 gap-2">
                 {GST_RATES.map((r) => {
-                  const isSelected = gstRate === r;
+                  const isSelected = (gstRate ?? 0) === r;
                   return (
                     <button
                       key={r}
@@ -390,9 +390,6 @@ export function NewProductInlinePanel({
                   );
                 })}
               </div>
-              {gstRate === null && (
-                <p className="text-[10px] text-amber-400/80 mt-1">Please select an applicable GST rate.</p>
-              )}
             </div>
 
             {/* Switches */}
@@ -443,7 +440,7 @@ export function NewProductInlinePanel({
               const costExcl = parseFloat(v.unitCostRupees) || 0;
               const sp = parseFloat(v.sellingPrice) || 0;
               const mrp = parseFloat(v.mrp) || 0;
-              const rate = gstRate ?? 18;
+              const rate = gstRate ?? 0;
               // Approx selling price excluding GST to compare with cost
               const spExcl = sp / (1 + rate / 100);
               const isNegativeMargin = sp > 0 && costExcl > 0 && spExcl < costExcl;

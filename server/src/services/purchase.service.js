@@ -477,7 +477,7 @@ export const purchaseService = {
           nameSnapshot = product.name;
           flavour = variant.flavour || '';
           size = variant.size || '';
-          gstRate = Number(item.gstRate ?? product.gstRate ?? 18);
+          gstRate = Number(item.gstRate ?? product.gstRate ?? 0);
           trackExpiry = product.trackExpiry !== false;
         }
 

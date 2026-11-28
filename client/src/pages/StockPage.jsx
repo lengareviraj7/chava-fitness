@@ -1440,7 +1440,7 @@ function NewPurchaseModal({
       unitCostRupees: products[0]?.variants?.[0]?.purchasePrice
         ? paiseToRupees(products[0].variants[0].purchasePrice)
         : '',
-      gstRate: products[0]?.gstRate ?? 18,
+      gstRate: products[0]?.gstRate ?? 0,
       batchNo: '',
       expiryMonth: '',
     },
@@ -1534,7 +1534,7 @@ function NewPurchaseModal({
         isNewVariant: false,
         qty: 1,
         unitCostRupees: '',
-        gstRate: 18,
+        gstRate: 0,
         batchNo: '',
         expiryMonth: '',
       },
@@ -1567,7 +1567,7 @@ function NewPurchaseModal({
         isNewVariant: false,
         qty: 1,
         unitCostRupees: firstVar?.purchasePrice ? paiseToRupees(firstVar.purchasePrice) : '',
-        gstRate: firstProd?.gstRate ?? 18,
+        gstRate: firstProd?.gstRate ?? 0,
         batchNo: '',
         expiryMonth: '',
       },
@@ -1623,7 +1623,7 @@ function NewPurchaseModal({
         barcode: targetVar?.barcode || '',
         isNewProduct: false,
         isNewVariant: false,
-        gstRate: prod.gstRate ?? 18,
+        gstRate: prod.gstRate ?? 0,
         unitCostRupees: targetVar?.purchasePrice ? paiseToRupees(targetVar.purchasePrice) : copy[idx].unitCostRupees,
       };
       return copy;
@@ -1651,7 +1651,7 @@ function NewPurchaseModal({
         barcode: firstLine?.barcode || '',
         isNewProduct: true,
         isNewVariant: true,
-        gstRate: np.gstRate ?? 18,
+        gstRate: np.gstRate ?? 0,
       };
       return copy;
     });

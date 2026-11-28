@@ -16,7 +16,7 @@ export function NewVariantInlinePanel({ product, onSave, onClose }) {
   const [expiryMonth, setExpiryMonth] = useState('');
   const [error, setError] = useState('');
 
-  const gstRate = product?.gstRate ?? 18;
+  const gstRate = product?.gstRate ?? 0;
   const trackExpiry = product?.trackExpiry ?? true;
 
   function handleMrpChange(val) {
