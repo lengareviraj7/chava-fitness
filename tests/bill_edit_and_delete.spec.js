@@ -31,10 +31,18 @@ test.describe('Bill Edit and Delete / Void Suite', () => {
     const udhariTabBtn = page.locator('button[data-tab="udhari"]');
     await expect(udhariTabBtn).toBeVisible();
 
-    // 2. Add product to cart
-    const addBtn = page.locator('span:has-text("+ Add")').first();
-    await addBtn.waitFor({ state: 'visible', timeout: 10000 });
-    await addBtn.click();
+    // 2. Add product to cart with available stock
+    const addBtns = page.locator('button:has-text("+ Add")');
+    await addBtns.first().waitFor({ state: 'visible', timeout: 10000 });
+    const count = await addBtns.count();
+    for (let i = count - 1; i >= 0; i--) {
+      await addBtns.nth(i).click();
+      await page.waitForTimeout(200);
+      const isOut = await page.locator('text=Insufficient stock').isVisible();
+      if (!isOut) break;
+      const removeBtn = page.locator('div.border-b button:has(svg)').last();
+      if (await removeBtn.isVisible()) await removeBtn.click();
+    }
     await page.waitForSelector('text=Grand Total:', { timeout: 5000 });
 
     // 3. Attach customer

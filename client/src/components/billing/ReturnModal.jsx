@@ -10,13 +10,13 @@ export function ReturnModal({ bill, user, onClose, onSuccess }) {
   const withinWindow = daysSince <= 7;
   const requiresOwnerPin = !isOwner || !withinWindow;
 
-  // Track return quantities and options per line item
+  // Track return quantities and options per line item - default to purchased returnable quantity
   const [returnConfig, setReturnConfig] = useState(() => {
     const init = {};
     for (const item of bill.items || []) {
-      const maxReturn = item.qty - (item.returnedQty || 0);
+      const maxReturn = Math.max(0, item.qty - (item.returnedQty || 0));
       init[item.lineId] = {
-        qty: 0,
+        qty: maxReturn,
         maxReturn,
         isDamaged: false,
       };
@@ -157,9 +157,47 @@ export function ReturnModal({ bill, user, onClose, onSuccess }) {
 
             {/* Line Items Selection */}
             <div>
-              <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-2">
-                Select Items to Return
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-semibold text-muted uppercase tracking-wider">
+                  Select Items to Return
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnConfig((prev) => {
+                        const next = { ...prev };
+                        for (const item of bill.items || []) {
+                          const max = Math.max(0, item.qty - (item.returnedQty || 0));
+                          if (next[item.lineId]) {
+                            next[item.lineId] = { ...next[item.lineId], qty: max };
+                          }
+                        }
+                        return next;
+                      });
+                    }}
+                    className="text-[11px] text-primary hover:underline font-semibold"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-muted/40 text-xs">•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReturnConfig((prev) => {
+                        const next = { ...prev };
+                        for (const key of Object.keys(next)) {
+                          next[key] = { ...next[key], qty: 0 };
+                        }
+                        return next;
+                      });
+                    }}
+                    className="text-[11px] text-muted hover:text-text font-semibold"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
               <div className="space-y-2">
                 {bill.items?.map((item) => {
                   const maxReturn = item.qty - (item.returnedQty || 0);

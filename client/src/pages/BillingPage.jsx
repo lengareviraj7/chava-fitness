@@ -1591,6 +1591,7 @@ export function BillingPage() {
       {/* ========================================================================= */}
       {returnBill && (
         <ReturnModal
+          key={returnBill._id}
           bill={returnBill}
           user={user}
           onClose={() => setReturnBill(null)}
