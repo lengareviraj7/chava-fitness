@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../../utils/cn.js';
 import { useAuth } from '../../contexts/AuthContext.jsx';
+import { CommandPaletteModal } from './CommandPaletteModal.jsx';
+import { NotificationDrawer } from './NotificationDrawer.jsx';
 
 const NAV_ITEMS = [
   { name: 'Dashboard',        path: '/',          icon: LayoutDashboard },
@@ -40,6 +42,21 @@ export function AppShell({ children }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [selectedLang, setSelectedLang] = useState(() => localStorage.getItem('app_lang') || 'en');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  // Global Cmd/Ctrl + K shortcut to toggle search palette
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((prev) => !prev);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Close drawers and dropdowns on route navigation
   useEffect(() => {
@@ -250,7 +267,10 @@ export function AppShell({ children }) {
           {/* Center / Right: Search pill, Notifications, Date pill */}
           <div className="flex items-center gap-3 ml-auto">
             {/* Search Pill with Cmd/Ctrl + K Hint */}
-            <div className="hidden sm:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs text-[#9BA79A] hover:border-white/20 transition-all cursor-pointer">
+            <div
+              onClick={() => setSearchOpen(true)}
+              className="hidden sm:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs text-[#9BA79A] hover:border-white/20 transition-all cursor-pointer"
+            >
               <Search className="w-4 h-4 text-[#9BA79A]" />
               <span className="hidden md:inline">Search anything...</span>
               <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] font-mono text-white/70 border border-white/10">
@@ -258,13 +278,20 @@ export function AppShell({ children }) {
               </kbd>
             </div>
 
-            {/* Notification Bell with Green Dot */}
+            {/* Notification Bell with Badge */}
             <button
-              className="relative p-2.5 rounded-full bg-white/[0.04] border border-white/[0.08] hover:border-white/20 text-[#9BA79A] hover:text-white transition-all"
+              onClick={() => setNotificationOpen(true)}
+              className="relative p-2.5 rounded-full bg-white/[0.04] border border-white/[0.08] hover:border-white/20 text-[#9BA79A] hover:text-white transition-all cursor-pointer"
               title="Notifications"
             >
               <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#B6F23B] shadow-[0_0_8px_#B6F23B]" />
+              {notificationCount > 0 ? (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-[#B6F23B] text-[#050805] text-[10px] font-extrabold flex items-center justify-center shadow-[0_0_8px_#B6F23B]">
+                  {notificationCount > 9 ? '9+' : notificationCount}
+                </span>
+              ) : (
+                <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#B6F23B] shadow-[0_0_8px_#B6F23B]" />
+              )}
             </button>
 
             {/* Localized Date Pill */}
@@ -274,6 +301,16 @@ export function AppShell({ children }) {
             </div>
           </div>
         </header>
+
+        {/* Command Palette Search Modal */}
+        <CommandPaletteModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+
+        {/* Notifications Drawer */}
+        <NotificationDrawer
+          isOpen={notificationOpen}
+          onClose={() => setNotificationOpen(false)}
+          onCountUpdate={setNotificationCount}
+        />
 
         {/* Main Content Area */}
         <div className="flex-1 px-4 sm:px-8 py-4 sm:py-6 max-w-7xl w-full mx-auto space-y-6">

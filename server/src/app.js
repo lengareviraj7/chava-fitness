@@ -18,6 +18,8 @@ import { customerRouter } from './routes/customer.routes.js';
 import { returnRouter } from './routes/return.routes.js';
 import { dayCloseRouter } from './routes/dayClose.routes.js';
 import { reportRouter } from './routes/report.routes.js';
+import { searchRouter } from './routes/search.routes.js';
+import { notificationRouter } from './routes/notification.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
 const app = express();
@@ -70,6 +72,10 @@ app.use('/api/day-close', dayCloseRouter);
 app.use('/api/v1/day-close', dayCloseRouter);
 app.use('/api/reports', reportRouter);
 app.use('/api/v1/reports', reportRouter);
+app.use('/api/search', searchRouter);
+app.use('/api/v1/search', searchRouter);
+app.use('/api/notifications', notificationRouter);
+app.use('/api/v1/notifications', notificationRouter);
 
 // 404
 app.use((_req, res) =>
