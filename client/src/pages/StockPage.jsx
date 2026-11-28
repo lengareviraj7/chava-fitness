@@ -503,7 +503,7 @@ export function StockPage() {
       {/* ========================================================================= */}
       {/* DRAWER: BATCH DETAILS & AUDIT MOVEMENTS */}
       {/* ========================================================================= */}
-      {selectedVariant && (
+      {selectedVariant && createPortal(
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex justify-end">
           <div className="bg-bg-elevated border-l border-border w-full max-w-xl h-full flex flex-col p-6 overflow-y-auto">
             <div className="flex items-start justify-between pb-4 border-b border-border">
@@ -611,13 +611,14 @@ export function StockPage() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
       {/* MODAL: MANUAL STOCK ADJUSTMENT */}
       {/* ========================================================================= */}
-      {showAdjustModal && adjustBatch && (
+      {showAdjustModal && adjustBatch && createPortal(
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
@@ -725,7 +726,8 @@ export function StockPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
@@ -829,6 +831,10 @@ export function StockPage() {
             loadStock();
             loadPurchaseCatalogs();
           }}
+          onSupplierCreated={(newSup) => {
+            setSuppliers((prev) => [newSup, ...prev]);
+            loadSuppliers();
+          }}
           onAddSupplier={() => setShowSupplierModal(true)}
         />
       )}
@@ -836,7 +842,7 @@ export function StockPage() {
       {/* ========================================================================= */}
       {/* MODAL: PURCHASE DETAILS & VOID */}
       {/* ========================================================================= */}
-      {selectedPurchase && (
+      {selectedPurchase && createPortal(
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-lg p-6 space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-border">
@@ -920,7 +926,8 @@ export function StockPage() {
               </form>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
@@ -977,8 +984,8 @@ export function StockPage() {
       {/* ========================================================================= */}
       {/* MODAL: ADD SUPPLIER */}
       {/* ========================================================================= */}
-      {showSupplierModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {showSupplierModal && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <h3 className="font-bold text-text">Register New Supplier</h3>
@@ -1060,14 +1067,15 @@ export function StockPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================================= */}
       {/* MODAL: RECORD SUPPLIER PAYMENT */}
       {/* ========================================================================= */}
-      {showPaymentModal && paymentSupplier && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      {showPaymentModal && paymentSupplier && createPortal(
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <div>
@@ -1144,7 +1152,8 @@ export function StockPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -1357,13 +1366,54 @@ function NewPurchaseModal({
   onClose,
   onSuccess,
   onAddSupplier,
+  onSupplierCreated,
 }) {
+  const [supplierList, setSupplierList] = useState(suppliers);
   const [supplierId, setSupplierId] = useState(suppliers[0]?._id || '');
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [paidRupees, setPaidRupees] = useState('');
   const [paymentMode, setPaymentMode] = useState('cash');
   const [refNo, setRefNo] = useState('');
+
+  // Sync supplierList when prop updates
+  useEffect(() => {
+    if (Array.isArray(suppliers) && suppliers.length > 0) {
+      setSupplierList((prev) => {
+        const existingIds = new Set(suppliers.map((s) => s._id));
+        const customAdded = prev.filter((s) => !existingIds.has(s._id));
+        return [...suppliers, ...customAdded];
+      });
+      setSupplierId((current) => current || suppliers[0]?._id || '');
+    }
+  }, [suppliers]);
+
+  // Quick Supplier Modal State inside NewPurchaseModal
+  const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
+  const [quickSupplierForm, setQuickSupplierForm] = useState({ name: '', phone: '', gstin: '', address: '' });
+  const [savingQuickSupplier, setSavingQuickSupplier] = useState(false);
+  const [quickSupplierError, setQuickSupplierError] = useState('');
+
+  async function handleQuickSupplierSubmit(e) {
+    e.preventDefault();
+    setSavingQuickSupplier(true);
+    setQuickSupplierError('');
+    try {
+      const res = await suppliersApi.create(quickSupplierForm);
+      const created = res.data?.data?.supplier || res.data?.supplier;
+      if (created) {
+        setSupplierList((prev) => [created, ...prev]);
+        setSupplierId(created._id);
+        onSupplierCreated?.(created);
+      }
+      setShowQuickSupplierModal(false);
+      setQuickSupplierForm({ name: '', phone: '', gstin: '', address: '' });
+    } catch (err) {
+      setQuickSupplierError(err.response?.data?.error?.message || 'Failed to create supplier');
+    } finally {
+      setSavingQuickSupplier(false);
+    }
+  }
 
   // New products and new variants drafted in this purchase inward
   const [newProducts, setNewProducts] = useState([]);
@@ -1884,7 +1934,7 @@ function NewPurchaseModal({
                 </label>
                 <button
                   type="button"
-                  onClick={onAddSupplier}
+                  onClick={() => setShowQuickSupplierModal(true)}
                   className="text-xs text-primary font-semibold hover:underline"
                 >
                   + New
@@ -1897,7 +1947,7 @@ function NewPurchaseModal({
                 className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
               >
                 <option value="">Select Supplier...</option>
-                {suppliers.map((s) => (
+                {supplierList.map((s) => (
                   <option key={s._id} value={s._id}>
                     {s.name} ({s.phone})
                   </option>
@@ -2318,6 +2368,98 @@ function NewPurchaseModal({
                   {saving ? 'Creating & Receiving...' : 'Confirm & Save Inward'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Quick Register New Supplier */}
+        {showQuickSupplierModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-border">
+                <h3 className="font-bold text-text">Register New Supplier</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickSupplierModal(false)}
+                  className="text-muted hover:text-text p-1 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {quickSupplierError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                  {quickSupplierError}
+                </div>
+              )}
+
+              <form onSubmit={handleQuickSupplierSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                    Supplier Name <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    required
+                    value={quickSupplierForm.name}
+                    onChange={(e) => setQuickSupplierForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="e.g. Bright Commodities Pvt Ltd"
+                    className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                    Phone (10 Digits)
+                  </label>
+                  <input
+                    value={quickSupplierForm.phone}
+                    onChange={(e) => setQuickSupplierForm((f) => ({ ...f, phone: e.target.value }))}
+                    placeholder="10-digit mobile number"
+                    className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                    GSTIN (Optional)
+                  </label>
+                  <input
+                    value={quickSupplierForm.gstin}
+                    onChange={(e) => setQuickSupplierForm((f) => ({ ...f, gstin: e.target.value.toUpperCase() }))}
+                    placeholder="e.g. 27AABCC1234D1Z5"
+                    className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
+                    Address (Optional)
+                  </label>
+                  <input
+                    value={quickSupplierForm.address}
+                    onChange={(e) => setQuickSupplierForm((f) => ({ ...f, address: e.target.value }))}
+                    placeholder="Warehouse / City"
+                    className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickSupplierModal(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingQuickSupplier}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 disabled:opacity-50"
+                  >
+                    {savingQuickSupplier ? 'Saving...' : 'Add Supplier'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
