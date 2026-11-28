@@ -208,7 +208,7 @@ export function NewVariantInlinePanel({ product, onSave, onClose }) {
               />
             </div>
             <div>
-              <label className="block text-muted text-[10px] font-semibold mb-1">Cost/Unit (₹ Excl) *</label>
+              <label className="block text-muted text-[10px] font-semibold mb-1">Purchase Price (₹) *</label>
               <input
                 type="number"
                 min="0"

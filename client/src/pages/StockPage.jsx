@@ -1826,6 +1826,7 @@ function NewPurchaseModal({
               sellingPrice: it.sellingPrice
                 ? rupeesToPaise(it.sellingPrice)
                 : rupeesToPaise(Number(it.unitCostRupees) * 1.3),
+              purchasePrice: rupeesToPaise(it.unitCostRupees || 0),
             })),
           };
         }),
@@ -1838,6 +1839,7 @@ function NewPurchaseModal({
           barcode: v.barcode ? v.barcode.trim() : null,
           mrp: rupeesToPaise(v.mrp || 0),
           sellingPrice: rupeesToPaise(v.sellingPrice || 0),
+          purchasePrice: rupeesToPaise(v.unitCostRupees || 0),
         })),
         items: items.map((it) => ({
           productId: it.productId || undefined,
@@ -2129,7 +2131,7 @@ function NewPurchaseModal({
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-muted mb-0.5">Cost/Unit (₹ Excl)</label>
+                      <label className="block text-[11px] text-muted mb-0.5">Purchase Price (₹)</label>
                       <input
                         type="number"
                         min="0"

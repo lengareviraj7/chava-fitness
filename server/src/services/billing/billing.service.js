@@ -160,7 +160,10 @@ export const billingService = {
 
       // Check batch allocation (FEFO)
       const allocations = await stockService.allocateBatches(variant._id, qty);
-      const costTotalPaise = allocations.reduce((sum, a) => sum + a.qty * a.unitCostPaise, 0);
+      let costTotalPaise = allocations.reduce((sum, a) => sum + a.qty * a.unitCostPaise, 0);
+      if (costTotalPaise === 0 && variant.purchasePrice) {
+        costTotalPaise = qty * variant.purchasePrice;
+      }
 
       processedLines.push({
         lineId: line.lineId || new mongoose.Types.ObjectId().toString(),

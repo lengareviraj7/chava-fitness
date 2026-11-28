@@ -224,6 +224,7 @@ export function NewProductInlinePanel({
         sellingPrice: parseFloat(v.sellingPrice),
         qty: parseInt(v.qty, 10),
         unitCostRupees: parseFloat(v.unitCostRupees),
+        purchasePrice: parseFloat(v.unitCostRupees),
         batchNo: v.batchNo.trim().toUpperCase(),
         expiryMonth: v.expiryMonth,
         gstRate: Number(gstRate),
@@ -543,7 +544,9 @@ export function NewProductInlinePanel({
                     </div>
 
                     <div>
-                      <label className="block text-muted text-[10px] mb-0.5">Cost/Unit (₹ Excl) *</label>
+                      <label className="block text-muted text-[10px] mb-0.5 font-bold text-primary">
+                        Purchase Price (₹) *
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -551,7 +554,7 @@ export function NewProductInlinePanel({
                         required
                         value={v.unitCostRupees}
                         onChange={(e) => handleVariantChange(idx, 'unitCostRupees', e.target.value)}
-                        placeholder="2800"
+                        placeholder="2000"
                         className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono"
                       />
                     </div>
@@ -579,18 +582,19 @@ export function NewProductInlinePanel({
                     </div>
                   </div>
 
-                  {/* Amber Margin Warning / Estimation */}
+                  {/* Profit Margin Indicator */}
                   {isNegativeMargin ? (
                     <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                       <span>
-                        Low / Negative margin: Net selling price ({formatINR(rupeesToPaise(Math.round(spExcl)))}) is less than unit cost ({formatINR(rupeesToPaise(Math.round(costExcl)))}).
+                        Negative profit: Selling price ({formatINR(rupeesToPaise(Math.round(spExcl)))}) is lower than purchase price ({formatINR(rupeesToPaise(Math.round(costExcl)))}).
                       </span>
                     </div>
                   ) : sp > 0 && costExcl > 0 ? (
-                    <div className="text-[10px] text-muted font-mono flex items-center gap-2">
+                    <div className="text-[11px] text-muted font-mono flex items-center gap-2 bg-primary/5 border border-primary/20 rounded-lg px-2.5 py-1.5">
                       <span>
-                        Expected unit margin: <strong className="text-primary font-semibold">{formatINR(estimatedMarginPaise)}</strong>
+                        Expected profit per unit (Selling ₹{sp} - Purchase ₹{costExcl}):{' '}
+                        <strong className="text-primary font-bold text-xs">{formatINR(estimatedMarginPaise)}</strong>
                       </span>
                     </div>
                   ) : null}

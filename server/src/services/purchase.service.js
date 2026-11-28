@@ -246,7 +246,7 @@ export const purchaseService = {
             barcode: v.barcode ? v.barcode.trim() : null,
             mrp,
             sellingPrice,
-            purchasePrice: 0,
+            purchasePrice: Number(v.purchasePrice ?? v.purchasePricePaise ?? (v.unitCostRupees ? Math.round(Number(v.unitCostRupees) * 100) : 0) ?? (v.unitCostPaise ? Number(v.unitCostPaise) : 0)) || 0,
             stock: 0,
             minStockLevel: np.lowStockLimit ?? 3,
             tempId: v.tempId || v.tempVariantId,
@@ -387,7 +387,7 @@ export const purchaseService = {
           barcode: nv.barcode ? nv.barcode.trim() : null,
           mrp,
           sellingPrice,
-          purchasePrice: 0,
+          purchasePrice: Number(nv.purchasePrice ?? nv.purchasePricePaise ?? (nv.unitCostRupees ? Math.round(Number(nv.unitCostRupees) * 100) : 0) ?? (nv.unitCostPaise ? Number(nv.unitCostPaise) : 0)) || 0,
           stock: 0,
           minStockLevel: prod.lowStockLimit ?? 3,
         };
