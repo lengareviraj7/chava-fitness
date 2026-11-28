@@ -490,4 +490,172 @@ export const billingService = {
     if (!held) throw new Error('Held cart not found or expired');
     return held;
   },
+
+  /**
+   * Void or Delete a bill created by mistake
+   * - Restores stock allocations back into stock batches
+   * - Reverses customer Udhari balance and writes CustomerLedger entry
+   * - Either sets bill status to 'voided' or deletes it permanently
+   */
+  async voidOrDeleteBill(id, { reason = 'Created by mistake', permanentDelete = false } = {}, user) {
+    const bill = await Bill.findById(id);
+    if (!bill) throw new Error('Bill not found');
+    if (bill.status === 'voided') throw new Error('Bill is already voided');
+
+    // 1. Reverse stock batch deductions
+    if (Array.isArray(bill.items)) {
+      for (const item of bill.items) {
+        if (Array.isArray(item.allocations)) {
+          for (const alloc of item.allocations) {
+            const batch = await StockBatch.findById(alloc.batchId);
+            if (batch) {
+              batch.qtyLeft += alloc.qty;
+              await batch.save();
+
+              await StockMovement.create({
+                productId: item.productId,
+                variantId: item.variantId,
+                batchId: batch._id,
+                qty: alloc.qty,
+                type: 'sale_void',
+                reason: 'void',
+                refType: 'bill',
+                refId: bill._id,
+                balanceAfter: batch.qtyLeft,
+                createdBy: user._id,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Reverse customer due balance if any Udhari was recorded
+    if (bill.customerId && bill.duePaise > 0) {
+      const customer = await Customer.findById(bill.customerId);
+      if (customer) {
+        customer.dueBalancePaise = Math.max(0, customer.dueBalancePaise - bill.duePaise);
+        await customer.save();
+
+        await CustomerLedger.create({
+          customerId: customer._id,
+          type: 'bill_void',
+          amountPaise: -bill.duePaise,
+          balanceAfterPaise: customer.dueBalancePaise,
+          refType: 'bill',
+          refId: bill._id,
+          note: `Voided bill ${bill.billNo} - mistake (${reason})`,
+          createdBy: user._id,
+        });
+      }
+    }
+
+    // 3. Either permanent delete or mark as voided
+    if (permanentDelete) {
+      await Payment.deleteMany({ billId: bill._id });
+      await Bill.findByIdAndDelete(bill._id);
+      return { success: true, deleted: true, billId: bill._id, billNo: bill.billNo };
+    }
+
+    bill.status = 'voided';
+    bill.duePaise = 0;
+    bill.voidReason = reason || 'Created by mistake';
+    bill.voidedAt = new Date();
+    bill.voidedBy = user._id;
+    await bill.save();
+
+    await Payment.updateMany({ billId: bill._id }, { status: 'voided' });
+
+    return { success: true, voided: true, bill };
+  },
+
+  /**
+   * Edit a bill's customer details, promise date (dueDate), or paid/due split
+   */
+  async editBill(id, updateData = {}, user) {
+    const bill = await Bill.findById(id);
+    if (!bill) throw new Error('Bill not found');
+    if (bill.status === 'voided') throw new Error('Cannot edit a voided bill');
+
+    const {
+      customerName,
+      customerPhone,
+      customerAddress,
+      dueDate,
+      paidAmountPaise,
+      paymentMode,
+    } = updateData;
+
+    // Update customer snapshot on bill
+    if (customerName !== undefined && customerName.trim()) {
+      bill.customerSnapshot.name = customerName.trim();
+    }
+    if (customerPhone !== undefined) {
+      bill.customerSnapshot.phone = customerPhone.trim();
+    }
+    if (customerAddress !== undefined) {
+      bill.customerSnapshot.address = customerAddress.trim();
+    }
+
+    // If customer record is linked, sync customer record as well
+    let customer = null;
+    if (bill.customerId) {
+      customer = await Customer.findById(bill.customerId);
+      if (customer) {
+        if (customerName !== undefined && customerName.trim()) {
+          customer.name = customerName.trim();
+        }
+        if (customerPhone !== undefined) {
+          customer.phone = customerPhone.trim();
+        }
+        if (customerAddress !== undefined) {
+          customer.address = customerAddress.trim();
+        }
+      }
+    }
+
+    // Update promise date / dueDate
+    if (dueDate !== undefined) {
+      bill.dueDate = dueDate ? new Date(dueDate) : null;
+    }
+
+    // Update paid/due amounts if specified
+    if (paidAmountPaise !== undefined && paidAmountPaise !== null) {
+      const newPaidPaise = Math.max(0, Math.min(Number(paidAmountPaise), bill.grandTotalPaise));
+      const oldDuePaise = bill.duePaise;
+      const newDuePaise = bill.grandTotalPaise - newPaidPaise;
+      const dueDiff = newDuePaise - oldDuePaise;
+
+      bill.paidPaise = newPaidPaise;
+      bill.duePaise = newDuePaise;
+
+      if (paymentMode) {
+        bill.paymentSummary = [{ mode: paymentMode, amountPaise: newPaidPaise }];
+      }
+
+      if (customer && dueDiff !== 0) {
+        customer.dueBalancePaise = Math.max(0, customer.dueBalancePaise + dueDiff);
+        await customer.save();
+
+        await CustomerLedger.create({
+          customerId: customer._id,
+          type: 'bill_edit',
+          amountPaise: dueDiff,
+          balanceAfterPaise: customer.dueBalancePaise,
+          refType: 'bill',
+          refId: bill._id,
+          note: `Bill ${bill.billNo} payment adjustment`,
+          createdBy: user._id,
+        });
+      }
+    }
+
+    if (customer) {
+      await customer.save();
+    }
+
+    await bill.save();
+
+    return { success: true, bill };
+  },
 };

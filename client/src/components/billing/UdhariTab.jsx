@@ -19,9 +19,14 @@ import {
   DollarSign,
   AlertTriangle,
   RefreshCw,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import axios from '../../api/axios.js';
+import { billingApi } from '../../api/billing.js';
 import { formatINR, paiseToRupees, rupeesToPaise } from '../../utils/money.js';
+import { EditBillModal } from './EditBillModal.jsx';
+import { DeleteBillModal } from './DeleteBillModal.jsx';
 
 export function UdhariTab({ user, onBillSelect }) {
   const [bills, setBills] = useState([]);
@@ -48,6 +53,10 @@ export function UdhariTab({ user, onBillSelect }) {
   // Reminder Modal State
   const [reminderModalBill, setReminderModalBill] = useState(null);
   const [copiedReminder, setCopiedReminder] = useState(false);
+
+  // Edit & Delete Modal State
+  const [editModalBill, setEditModalBill] = useState(null);
+  const [deleteModalBill, setDeleteModalBill] = useState(null);
 
   const fetchUdhariList = useCallback(async () => {
     setLoading(true);
@@ -153,6 +162,16 @@ export function UdhariTab({ user, onBillSelect }) {
     } catch (e) {
       console.error('Failed to copy', e);
     }
+  }
+
+  // Open Edit Modal
+  function handleOpenEdit(bill) {
+    setEditModalBill(bill);
+  }
+
+  // Open Delete Modal
+  function handleOpenDelete(bill) {
+    setDeleteModalBill(bill);
   }
 
   return (
@@ -413,6 +432,29 @@ export function UdhariTab({ user, onBillSelect }) {
                     <span>Collect & Clear</span>
                   </button>
                 </div>
+
+                {/* Secondary Actions: Edit & Delete (Owner Mistake Correction) */}
+                <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(bill)}
+                    className="flex-1 py-1.5 px-2.5 rounded-lg bg-surface hover:bg-surface-strong border border-border text-xs font-semibold text-text hover:text-primary transition-colors flex items-center justify-center gap-1.5"
+                    title="Edit Customer, Due Date, or Payment"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-primary" />
+                    <span>Edit</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenDelete(bill)}
+                    className="flex-1 py-1.5 px-2.5 rounded-lg bg-danger/10 hover:bg-danger/20 border border-danger/30 text-xs font-semibold text-danger transition-colors flex items-center justify-center gap-1.5"
+                    title="Delete or Void Mistaken Bill"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-danger" />
+                    <span>Delete</span>
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -605,6 +647,34 @@ export function UdhariTab({ user, onBillSelect }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6. MODAL: EDIT BILL & CUSTOMER INFO */}
+      {/* ========================================================================= */}
+      {editModalBill && (
+        <EditBillModal
+          bill={editModalBill}
+          onClose={() => setEditModalBill(null)}
+          onSuccess={() => {
+            setEditModalBill(null);
+            fetchUdhariList();
+          }}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* 7. MODAL: DELETE / VOID MISTAKEN BILL */}
+      {/* ========================================================================= */}
+      {deleteModalBill && (
+        <DeleteBillModal
+          bill={deleteModalBill}
+          onClose={() => setDeleteModalBill(null)}
+          onSuccess={() => {
+            setDeleteModalBill(null);
+            fetchUdhariList();
+          }}
+        />
       )}
     </div>
   );

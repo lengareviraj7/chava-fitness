@@ -24,7 +24,7 @@ const stockMovementSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['purchase', 'purchase_void', 'sale', 'sale_return', 'adjustment'],
+      enum: ['purchase', 'purchase_void', 'sale', 'sale_return', 'sale_void', 'adjustment'],
       required: true,
     },
     reason: {

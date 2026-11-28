@@ -16,7 +16,7 @@ import { CashEntry } from '../src/models/CashEntry.js';
 import { customerService } from '../src/services/customer.service.js';
 import { dueService } from '../src/services/billing/due.service.js';
 import { returnService } from '../src/services/billing/return.service.js';
-import { dayCloseService } from '../src/services/billing/dayClose.service.js';
+import { dayCloseService, getKolkataDateString } from '../src/services/billing/dayClose.service.js';
 
 let mongod;
 let ownerUser;
@@ -189,7 +189,7 @@ describe('Phase 4: Customers, Ledger, Dues, Returns & Day Close', () => {
   });
 
   it('calculates Day Close cash summary with strict formula and redaction for staff', async () => {
-    const todayDateStr = new Date().toISOString().slice(0, 10);
+    const todayDateStr = getKolkataDateString();
 
     // Record a sale payment
     await Payment.create({

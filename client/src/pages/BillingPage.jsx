@@ -26,6 +26,7 @@ import {
   Copy,
   Calendar,
   MapPin,
+  Pencil,
 } from 'lucide-react';
 import axios from '../api/axios.js';
 import { billingApi, customersApi } from '../api/billing.js';
@@ -37,6 +38,8 @@ import { formatINR, paiseToRupees, rupeesToPaise } from '../utils/money.js';
 import { toAsciiDigits } from '../utils/toAsciiDigits.js';
 import { ReturnModal } from '../components/billing/ReturnModal.jsx';
 import { UdhariTab } from '../components/billing/UdhariTab.jsx';
+import { EditBillModal } from '../components/billing/EditBillModal.jsx';
+import { DeleteBillModal } from '../components/billing/DeleteBillModal.jsx';
 
 export function generateBillWhatsAppMessage(bill) {
   if (!bill) return '';
@@ -99,6 +102,8 @@ export function BillingPage() {
 
   const [activeTab, setActiveTab] = useState('new'); // 'new' | 'history' | 'udhari'
   const [returnBill, setReturnBill] = useState(null);
+  const [editModalBill, setEditModalBill] = useState(null);
+  const [deleteModalBill, setDeleteModalBill] = useState(null);
   const [udhariCount, setUdhariCount] = useState(0);
 
   const toast = useToast();
@@ -1314,13 +1319,26 @@ export function BillingPage() {
                 <tbody className="divide-y divide-border">
                   {billsHistory.map((b) => (
                     <tr key={b._id} className="hover:bg-white/[0.06] active:bg-primary/[0.12] transition-colors">
-                      <td className="p-4 font-mono font-bold text-text">{b.billNo}</td>
+                      <td className="p-4 font-mono font-bold text-text">
+                        <div className="flex items-center gap-1.5">
+                          <span>{b.billNo}</span>
+                          {b.status === 'voided' && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-danger/10 text-danger border border-danger/30 uppercase">
+                              Voided
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-4 text-xs text-muted">{new Date(b.createdAt).toLocaleString('en-IN')}</td>
                       <td className="p-4 text-text">{b.customerSnapshot?.name || 'Walk-in'}</td>
                       <td className="p-4 text-center font-mono text-xs">{b.items?.length || 0}</td>
                       <td className="p-4 text-right font-mono">
                         <div className="font-bold text-primary">{formatINR(b.grandTotalPaise)}</div>
-                        {b.duePaise > 0 ? (
+                        {b.status === 'voided' ? (
+                          <div className="text-[10px] text-danger font-bold mt-0.5 uppercase tracking-wider">
+                            Voided (Mistake)
+                          </div>
+                        ) : b.duePaise > 0 ? (
                           <div className="text-[10px] text-danger font-bold mt-0.5">
                             Udhari: {formatINR(b.duePaise)}
                           </div>
@@ -1339,13 +1357,31 @@ export function BillingPage() {
                           >
                             Receipt
                           </button>
-                          {b.status !== 'returned' && (
+                          {b.status !== 'returned' && b.status !== 'voided' && (
                             <button
                               onClick={() => setReturnBill(b)}
                               className="px-2.5 py-1 rounded bg-danger/10 border border-danger/30 text-xs text-danger hover:bg-danger/20 font-semibold transition-colors"
                             >
                               Return
                             </button>
+                          )}
+                          {isOwner && b.status !== 'voided' && (
+                            <>
+                              <button
+                                onClick={() => setEditModalBill(b)}
+                                title="Edit Bill"
+                                className="p-1 rounded bg-surface border border-border text-muted hover:text-primary transition-colors"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteModalBill(b)}
+                                title="Delete / Void Mistaken Bill"
+                                className="p-1 rounded bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -1561,6 +1597,36 @@ export function BillingPage() {
           onSuccess={() => {
             setReturnBill(null);
             loadHistory();
+          }}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: EDIT BILL */}
+      {/* ========================================================================= */}
+      {editModalBill && (
+        <EditBillModal
+          bill={editModalBill}
+          onClose={() => setEditModalBill(null)}
+          onSuccess={() => {
+            setEditModalBill(null);
+            loadHistory();
+            fetchUdhariCount();
+          }}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DELETE BILL */}
+      {/* ========================================================================= */}
+      {deleteModalBill && (
+        <DeleteBillModal
+          bill={deleteModalBill}
+          onClose={() => setDeleteModalBill(null)}
+          onSuccess={() => {
+            setDeleteModalBill(null);
+            loadHistory();
+            fetchUdhariCount();
           }}
         />
       )}

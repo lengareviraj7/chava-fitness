@@ -253,6 +253,19 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    voidReason: {
+      type: String,
+      default: '',
+    },
+    voidedAt: {
+      type: Date,
+      default: null,
+    },
+    voidedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     idempotencyKey: {
       type: String,
       unique: true,

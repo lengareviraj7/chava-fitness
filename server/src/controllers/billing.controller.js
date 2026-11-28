@@ -115,4 +115,35 @@ export const billingController = {
       next(err);
     }
   },
+
+  async voidOrDeleteBill(req, res, next) {
+    try {
+      const result = await billingService.voidOrDeleteBill(
+        req.params.id,
+        {
+          reason: req.body?.reason || req.query?.reason || 'Created by mistake',
+          permanentDelete: req.body?.permanentDelete === true || req.query?.permanentDelete === 'true',
+        },
+        req.user
+      );
+      return sendSuccess(
+        res,
+        result,
+        result.deleted ? 'Bill deleted and inventory restored' : 'Bill voided and inventory restored'
+      );
+    } catch (err) {
+      if (!err.statusCode) err.statusCode = 400;
+      next(err);
+    }
+  },
+
+  async editBill(req, res, next) {
+    try {
+      const result = await billingService.editBill(req.params.id, req.body, req.user);
+      return sendSuccess(res, result, 'Bill updated successfully');
+    } catch (err) {
+      if (!err.statusCode) err.statusCode = 400;
+      next(err);
+    }
+  },
 };

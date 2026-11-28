@@ -10,7 +10,7 @@ const customerLedgerSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['opening', 'bill_due', 'due_payment', 'return_adjust'],
+      enum: ['opening', 'bill_due', 'due_payment', 'return_adjust', 'bill_void', 'bill_edit'],
       required: true,
     },
     amountPaise: {
