@@ -143,7 +143,7 @@ function StaffTab() {
       ))}
 
       {showAdd && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-text">Add Staff User</h3>

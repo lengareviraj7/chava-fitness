@@ -423,7 +423,7 @@ export function UdhariTab({ user, onBillSelect }) {
       {/* 4. MODAL: SETTLE / COLLECT UDHARI */}
       {/* ========================================================================= */}
       {settleModalBill && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <div>
@@ -556,7 +556,7 @@ export function UdhariTab({ user, onBillSelect }) {
       {/* 5. MODAL: PREVIEW & COPY REMINDER TEXT */}
       {/* ========================================================================= */}
       {reminderModalBill && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <div>

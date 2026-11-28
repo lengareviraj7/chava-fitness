@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Package, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, X, Truck } from 'lucide-react';
 import { productsApi, categoriesApi } from '../api/products.js';
@@ -175,8 +176,8 @@ function ProductForm({ product, categories, onSave, onClose, onCategoryCreated }
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-2xl max-h-[90dvh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-bg-elevated z-10">
           <h2 className="font-bold text-text text-lg">{isEdit ? 'Edit Product' : 'Add Product'}</h2>
@@ -349,7 +350,8 @@ function ProductForm({ product, categories, onSave, onClose, onCategoryCreated }
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -398,8 +400,8 @@ function QuickStockModal({ product, variant, onSave, onClose }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div>
@@ -462,7 +464,8 @@ function QuickStockModal({ product, variant, onSave, onClose }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -1155,7 +1155,7 @@ export function BillingPage() {
 
         return (
           <>
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
               <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-lg p-6 space-y-4 text-center max-h-[92dvh] overflow-y-auto">
                 <CheckCircle className="w-12 h-12 text-primary mx-auto" />
                 <h3 className="text-xl font-black text-white">Sale Completed!</h3>
@@ -1372,7 +1372,7 @@ export function BillingPage() {
       {/* ========================================================================= */}
       {showNewCustomerModal && (
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex md:items-center md:justify-center items-end"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex md:items-center md:justify-center items-end"
           onKeyDown={(e) => {
             if (e.key === 'Escape') setShowNewCustomerModal(false);
           }}

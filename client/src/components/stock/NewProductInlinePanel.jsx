@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, AlertTriangle, Check, X, ShieldAlert, Sparkles, Layers } from 'lucide-react';
 import { productsApi } from '../../api/products.js';
 import { MonthYearPicker } from './MonthYearPicker.jsx';
@@ -236,8 +237,8 @@ export function NewProductInlinePanel({
     onSave({ product: productPayload, variants: variantPayloads });
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[105] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
       {/* Container: Bottom Sheet on Mobile (<768px), Centered Modal on Desktop (>=768px) */}
       <div className="bg-bg-elevated border border-primary/30 rounded-t-3xl sm:rounded-2xl w-full max-w-3xl max-h-[92dvh] flex flex-col shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
         {/* Header */}
@@ -620,6 +621,7 @@ export function NewProductInlinePanel({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

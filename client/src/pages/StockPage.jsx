@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import {
   Boxes,
@@ -503,7 +504,7 @@ export function StockPage() {
       {/* DRAWER: BATCH DETAILS & AUDIT MOVEMENTS */}
       {/* ========================================================================= */}
       {selectedVariant && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-end">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex justify-end">
           <div className="bg-bg-elevated border-l border-border w-full max-w-xl h-full flex flex-col p-6 overflow-y-auto">
             <div className="flex items-start justify-between pb-4 border-b border-border">
               <div>
@@ -617,7 +618,7 @@ export function StockPage() {
       {/* MODAL: MANUAL STOCK ADJUSTMENT */}
       {/* ========================================================================= */}
       {showAdjustModal && adjustBatch && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <h3 className="font-bold text-text">Adjust Batch {adjustBatch.batchNo}</h3>
@@ -836,7 +837,7 @@ export function StockPage() {
       {/* MODAL: PURCHASE DETAILS & VOID */}
       {/* ========================================================================= */}
       {selectedPurchase && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-lg p-6 space-y-4 max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-border">
               <div>
@@ -977,7 +978,7 @@ export function StockPage() {
       {/* MODAL: ADD SUPPLIER */}
       {/* ========================================================================= */}
       {showSupplierModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <h3 className="font-bold text-text">Register New Supplier</h3>
@@ -1066,7 +1067,7 @@ export function StockPage() {
       {/* MODAL: RECORD SUPPLIER PAYMENT */}
       {/* ========================================================================= */}
       {showPaymentModal && paymentSupplier && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-border">
               <div>
@@ -1823,8 +1824,8 @@ function NewPurchaseModal({
   const totalUnits = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
   const selectedSupplier = suppliers.find((s) => s._id === supplierId);
 
-  return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-2 sm:p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-4xl p-4 sm:p-6 space-y-4 max-h-[94dvh] overflow-y-auto flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
@@ -2240,7 +2241,7 @@ function NewPurchaseModal({
 
         {/* Modal: Final Atomic Confirmation Summary */}
         {showConfirmModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-bg-elevated border border-primary/40 rounded-2xl w-full max-w-md p-5 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-border">
                 <h4 className="font-bold text-text text-base flex items-center gap-2">
@@ -2321,6 +2322,7 @@ function NewPurchaseModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

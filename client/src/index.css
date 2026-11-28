@@ -58,10 +58,25 @@
     transition: background-color 0.15s ease, color 0.15s ease;
   }
   table tbody tr:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgba(255, 255, 255, 0.05) !important;
   }
   table tbody tr:active {
-    background-color: rgba(182, 242, 59, 0.10);
+    background-color: rgba(182, 242, 59, 0.12) !important;
+  }
+  table tbody tr:focus,
+  table tbody tr:focus-visible,
+  table tbody tr:focus-within {
+    outline: none;
+    background-color: rgba(182, 242, 59, 0.08) !important;
+  }
+
+  ::selection {
+    background-color: #B6F23B !important;
+    color: #0A0F05 !important;
+  }
+  ::-moz-selection {
+    background-color: #B6F23B !important;
+    color: #0A0F05 !important;
   }
 
   /* Safeguard: Overwrite any accidental opaque white hover */

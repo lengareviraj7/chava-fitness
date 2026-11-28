@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Users,
   Search,
@@ -60,8 +61,8 @@ function CustomerFormModal({ customer, onSave, onClose }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-5 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <h2 className="font-bold text-text text-lg">{isEdit ? 'Edit Customer' : 'Add New Customer'}</h2>
@@ -169,7 +170,8 @@ function CustomerFormModal({ customer, onSave, onClose }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -201,8 +203,8 @@ function DueCollectionModal({ customer, onClose, onSuccess }) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-5 space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-border">
           <h2 className="font-bold text-text text-lg">Collect Customer Due</h2>
@@ -351,7 +353,8 @@ function DueCollectionModal({ customer, onClose, onSuccess }) {
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -374,8 +377,8 @@ function CustomerLedgerModal({ customer, onClose }) {
     fetchLedger();
   }, [customer._id]);
 
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  return createPortal(
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
       <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-border">
           <div>
@@ -445,7 +448,8 @@ function CustomerLedgerModal({ customer, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

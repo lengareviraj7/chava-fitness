@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, AlertTriangle, Layers, ShieldAlert } from 'lucide-react';
 import { MonthYearPicker } from './MonthYearPicker.jsx';
 import { formatINR, rupeesToPaise } from '../../utils/money.js';
@@ -93,8 +94,8 @@ export function NewVariantInlinePanel({ product, onSave, onClose }) {
   const spExcl = sp / (1 + gstRate / 100);
   const isNegativeMargin = sp > 0 && costExcl > 0 && spExcl < costExcl;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[105] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
       <div className="bg-bg-elevated border border-primary/30 rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[92dvh] flex flex-col shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-5 border-b border-border shrink-0">
@@ -272,6 +273,7 @@ export function NewVariantInlinePanel({ product, onSave, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

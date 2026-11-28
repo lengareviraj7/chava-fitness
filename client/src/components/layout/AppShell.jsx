@@ -81,7 +81,7 @@ export function AppShell({ children }) {
       {/* Mobile Drawer Overlay */}
       {drawerOpen && (
         <div
-          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-black/75 backdrop-blur-sm z-30 md:hidden"
           onClick={() => setDrawerOpen(false)}
         />
       )}
@@ -90,7 +90,7 @@ export function AppShell({ children }) {
       <aside
         id="app-sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col justify-between bg-[#0B110C] border-r border-white/5 select-none shrink-0',
+          'fixed inset-y-0 left-0 z-40 md:z-20 flex flex-col justify-between bg-[#0B110C] border-r border-white/5 select-none shrink-0',
           // Desktop fixed widths (NO width transitions, strictly screen-based):
           // 768px - 1023px: 76px icon rail
           // 1024px - 1279px: 232px
@@ -276,7 +276,7 @@ export function AppShell({ children }) {
         </header>
 
         {/* Main Content Area */}
-        <div className="flex-1 relative z-10 px-4 sm:px-8 py-4 sm:py-6 max-w-7xl w-full mx-auto space-y-6">
+        <div className="flex-1 px-4 sm:px-8 py-4 sm:py-6 max-w-7xl w-full mx-auto space-y-6">
           {children}
         </div>
       </main>
