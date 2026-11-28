@@ -229,6 +229,20 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    dueDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    lastReminderSentAt: {
+      type: Date,
+      default: null,
+    },
+    lastReminderStage: {
+      type: String,
+      enum: ['none', '3_days_before', 'due_today', 'overdue'],
+      default: 'none',
+    },
     paymentSummary: [
       {
         mode: { type: String, required: true },

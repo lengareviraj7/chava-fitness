@@ -22,7 +22,12 @@ import {
   ShoppingBag,
   History,
   Lock,
+  MessageCircle,
+  Copy,
+  Calendar,
+  MapPin,
 } from 'lucide-react';
+import axios from '../api/axios.js';
 import { billingApi, customersApi } from '../api/billing.js';
 import { settingsApi } from '../api/settings.js';
 import { productsApi, categoriesApi } from '../api/products.js';
@@ -31,13 +36,70 @@ import { useToast } from '../components/ui/Toast.jsx';
 import { formatINR, paiseToRupees, rupeesToPaise } from '../utils/money.js';
 import { toAsciiDigits } from '../utils/toAsciiDigits.js';
 import { ReturnModal } from '../components/billing/ReturnModal.jsx';
+import { UdhariTab } from '../components/billing/UdhariTab.jsx';
+
+export function generateBillWhatsAppMessage(bill) {
+  if (!bill) return '';
+  const customerName = bill.customerSnapshot?.name || 'Customer';
+  const village = bill.customerSnapshot?.address || 'Visapur';
+  const totalRupees = formatINR(bill.grandTotalPaise);
+  const paidRupees = formatINR(bill.paidPaise != null ? bill.paidPaise : bill.grandTotalPaise);
+  const remainingPaise = bill.duePaise || 0;
+  const remainingRupees = formatINR(remainingPaise);
+  const dueDateStr = bill.dueDate
+    ? new Date(bill.dueDate).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : '';
+
+  const itemLines = (bill.items || [])
+    .map(
+      (it, idx) =>
+        `  ${idx + 1}. ${it.nameSnapshot} (${it.flavour || ''} ${it.size || ''}) x${it.qty} - ${formatINR(
+          it.netPaise || it.unitPricePaise * it.qty
+        )}`
+    )
+    .join('\n');
+
+  let msg = `*Greetings from Chava Fitness Club, Visapur!* 🙏\n\n`;
+  msg += `Dear *${customerName}*,\n`;
+  msg += `Thank you for your purchase from Chava Fitness Club!\n\n`;
+  msg += `📄 *Bill No:* ${bill.billNo}\n`;
+  msg += `📅 *Date:* ${new Date(bill.createdAt || Date.now()).toLocaleDateString('en-IN')}\n\n`;
+  if (itemLines) {
+    msg += `🛒 *Items Purchased:*\n${itemLines}\n\n`;
+  }
+  msg += `💰 *Total Bill Amount:* ${totalRupees}\n`;
+  msg += `💵 *Amount Paid:* ${paidRupees}\n`;
+
+  if (remainingPaise > 0) {
+    msg += `⚠️ *Remaining Balance (Udhari):* ${remainingRupees}\n`;
+    if (dueDateStr) {
+      msg += `⏰ *Promised Payment Date:* ${dueDateStr}\n\n`;
+      msg += `Kindly pay the remaining balance of *${remainingRupees}* on or before *${dueDateStr}*.\n`;
+    } else {
+      msg += `Kindly clear the remaining balance at your earliest convenience.\n`;
+    }
+  } else {
+    msg += `✅ *Payment Status:* Fully Paid\n`;
+  }
+
+  msg += `\nFor supplement advice or queries, contact us:\n`;
+  msg += `📞 +91 9876543210 (Chava Fitness Club, Visapur)\n\n`;
+  msg += `Stay Fit, Stay Strong! 💪🏋️‍♂️`;
+
+  return msg;
+}
 
 export function BillingPage() {
   const { user } = useAuth();
   const isOwner = user?.role === 'owner';
 
-  const [activeTab, setActiveTab] = useState('new'); // 'new' | 'history'
+  const [activeTab, setActiveTab] = useState('new'); // 'new' | 'history' | 'udhari'
   const [returnBill, setReturnBill] = useState(null);
+  const [udhariCount, setUdhariCount] = useState(0);
 
   const toast = useToast();
 
@@ -87,17 +149,48 @@ export function BillingPage() {
     savingsPaise: 0,
   });
 
-  // Payment Modal State
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentMode, setPaymentMode] = useState('cash'); // 'cash' | 'upi' | 'card' | 'split'
+  // Single-Process Payment & Udhari State
+  const defaultPromiseDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  };
+  const [paidRupees, setPaidRupees] = useState('');
+  const [promiseDate, setPromiseDate] = useState(defaultPromiseDate());
+  const [paymentMode, setPaymentMode] = useState('cash'); // 'cash' | 'upi' | 'card'
   const [cashTendered, setCashTendered] = useState('');
-  const [splitPayments, setSplitPayments] = useState({ cash: '', upi: '', card: '' });
   const [approvalPin, setApprovalPin] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
+  const [copiedBillMsg, setCopiedBillMsg] = useState(false);
 
   // Success / Receipt State
   const [completedBill, setCompletedBill] = useState(null);
+
+  // Automatically keep paidRupees in sync with quote grandTotal
+  useEffect(() => {
+    if (quote.grandTotalPaise > 0) {
+      setPaidRupees(paiseToRupees(quote.grandTotalPaise).toString());
+    } else {
+      setPaidRupees('');
+    }
+  }, [quote.grandTotalPaise]);
+
+  // Fetch count of pending udhari bills
+  const fetchUdhariCount = useCallback(async () => {
+    try {
+      const res = await axios.get('/billing/udhari');
+      if (res.data?.data?.summary) {
+        setUdhariCount(res.data.data.summary.totalBillsCount || 0);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUdhariCount();
+  }, [fetchUdhariCount]);
 
   // History State
   const [billsHistory, setBillsHistory] = useState([]);
@@ -384,25 +477,30 @@ export function BillingPage() {
 
     try {
       const grandTotal = quote.grandTotalPaise;
-      let payments = [];
+      const enteredPaidPaise = rupeesToPaise(Number(paidRupees) || 0);
+      const duePaise = Math.max(0, grandTotal - enteredPaidPaise);
 
-      if (paymentMode === 'cash') {
-        payments.push({ mode: 'cash', amountPaise: grandTotal, cashTenderedPaise: rupeesToPaise(Number(cashTendered) || 0) });
-      } else if (paymentMode === 'upi') {
-        payments.push({ mode: 'upi', amountPaise: grandTotal });
-      } else if (paymentMode === 'card') {
-        payments.push({ mode: 'card', amountPaise: grandTotal });
-      } else if (paymentMode === 'split') {
-        const c = rupeesToPaise(Number(splitPayments.cash) || 0);
-        const u = rupeesToPaise(Number(splitPayments.upi) || 0);
-        const cd = rupeesToPaise(Number(splitPayments.card) || 0);
-        if (c > 0) payments.push({ mode: 'cash', amountPaise: c });
-        if (u > 0) payments.push({ mode: 'upi', amountPaise: u });
-        if (cd > 0) payments.push({ mode: 'card', amountPaise: cd });
+      if (duePaise > 0 && !selectedCustomer && (!newCustomerForm.name || !newCustomerForm.phone)) {
+        setCheckoutError('Customer name and 10-digit mobile number are required for Udhari / credit sales.');
+        setCheckingOut(false);
+        return;
+      }
+
+      let payments = [];
+      if (enteredPaidPaise > 0) {
+        payments.push({
+          mode: paymentMode,
+          amountPaise: Math.min(enteredPaidPaise, grandTotal),
+          cashTenderedPaise: paymentMode === 'cash' && cashTendered ? rupeesToPaise(Number(cashTendered)) : null,
+        });
       }
 
       const payload = {
         customerId: selectedCustomer?._id || null,
+        customerName: selectedCustomer ? selectedCustomer.name : (newCustomerForm.name || '').trim(),
+        customerPhone: selectedCustomer ? selectedCustomer.phone : (newCustomerForm.phone || '').trim(),
+        customerAddress: selectedCustomer ? selectedCustomer.address : (newCustomerForm.address || defaultAddress || 'Visapur').trim(),
+        dueDate: duePaise > 0 ? promiseDate : null,
         items: cartItems.map((it) => ({
           productId: it.productId,
           variantId: it.variantId,
@@ -426,15 +524,17 @@ export function BillingPage() {
       const res = await billingApi.checkout(payload);
       setCompletedBill(res.data.data.bill);
       setShowPaymentModal(false);
-      // Reset cart
+      // Reset cart and customer form
       setCartItems([]);
       setSelectedCustomer(null);
+      setNewCustomerForm({ name: '', phone: '', address: defaultAddress || 'Visapur' });
       setBillDiscountType('none');
       setBillDiscountValue('');
       setCashTendered('');
       setApprovalPin('');
+      fetchUdhariCount();
     } catch (err) {
-      setCheckoutError(err.response?.data?.error?.message || 'Checkout failed');
+      setCheckoutError(err.response?.data?.error?.message || err.response?.data?.error || 'Checkout failed');
     } finally {
       setCheckingOut(false);
     }
@@ -468,6 +568,20 @@ export function BillingPage() {
             }`}
           >
             Bills & Returns
+          </button>
+          <button
+            data-tab="udhari"
+            onClick={() => setActiveTab('udhari')}
+            className={`px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-1.5 ${
+              activeTab === 'udhari' ? 'bg-primary text-primary-ink shadow-sm' : 'text-muted hover:text-text'
+            }`}
+          >
+            <span>Udhari</span>
+            {udhariCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-danger/20 text-danger border border-danger/30">
+                {udhariCount}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -847,217 +961,329 @@ export function BillingPage() {
                   </div>
                 </div>
 
-                {/* Checkout Trigger Button */}
+                {/* Single-Process Payment & Udhari Control Panel */}
+                <div className="bg-[#0D140F] border border-border rounded-xl p-3.5 space-y-3">
+                  {/* Paid Amount Input */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-muted uppercase tracking-wider">
+                        Amount Paid Now (₹)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setPaidRupees(paiseToRupees(quote.grandTotalPaise).toString())}
+                        className="text-[11px] text-primary hover:underline font-semibold"
+                      >
+                        Pay Full ({formatINR(quote.grandTotalPaise)})
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted font-bold text-sm">₹</span>
+                      <input
+                        data-testid="amount-paid-now"
+                        type="number"
+                        min="0"
+                        max={paiseToRupees(quote.grandTotalPaise)}
+                        value={paidRupees}
+                        onChange={(e) => setPaidRupees(e.target.value)}
+                        placeholder={paiseToRupees(quote.grandTotalPaise).toString()}
+                        className="w-full bg-bg border border-border rounded-xl pl-8 pr-3 py-2 text-base font-mono font-bold text-white focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Udhari / Due Calculation & Promise Date */}
+                  {Number(paidRupees) < paiseToRupees(quote.grandTotalPaise) ? (
+                    <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-danger flex items-center gap-1">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          Remaining Udhari:
+                        </span>
+                        <span className="text-sm font-black font-mono text-danger">
+                          {formatINR(Math.max(0, quote.grandTotalPaise - rupeesToPaise(Number(paidRupees) || 0)))}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
+                          Promised Payment Date (Udhari)
+                        </label>
+                        <input
+                          type="date"
+                          min={new Date().toISOString().slice(0, 10)}
+                          value={promiseDate}
+                          onChange={(e) => setPromiseDate(e.target.value)}
+                          required
+                          className="w-full bg-[#0D140F] border border-border rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      {!selectedCustomer && (
+                        <p className="text-[10px] text-warning font-semibold">
+                          ⚠️ Customer name and mobile number are required above for recording Udhari.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-success/10 border border-success/30 flex items-center justify-between text-xs text-success font-bold">
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle className="w-4 h-4" /> Fully Paid (No Udhari)
+                      </span>
+                      <span>₹{(Number(paidRupees) || 0).toFixed(2)}</span>
+                    </div>
+                  )}
+
+                  {/* Payment Mode (Cash / UPI / Card) */}
+                  {(Number(paidRupees) || 0) > 0 && (
+                    <div>
+                      <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1.5">
+                        Payment Mode
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: 'cash', label: 'Cash', icon: DollarSign },
+                          { id: 'upi', label: 'UPI / QR', icon: QrCode },
+                          { id: 'card', label: 'Card', icon: CreditCard },
+                        ].map((tab) => {
+                          const Icon = tab.icon;
+                          return (
+                            <button
+                              key={tab.id}
+                              type="button"
+                              onClick={() => setPaymentMode(tab.id)}
+                              className={`py-2 px-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 transition-all ${
+                                paymentMode === tab.id
+                                  ? 'bg-primary text-primary-ink border-primary shadow-sm'
+                                  : 'bg-surface border-border text-muted hover:text-white'
+                              }`}
+                            >
+                              <Icon className="w-3.5 h-3.5" />
+                              <span>{tab.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cash Tendered & Change if Cash */}
+                  {paymentMode === 'cash' && (Number(paidRupees) || 0) > 0 && (
+                    <div className="space-y-1.5 bg-surface/60 p-2.5 rounded-xl border border-border">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-semibold text-muted uppercase tracking-wider">
+                          Cash Tendered (₹)
+                        </label>
+                        {Number(cashTendered) > (Number(paidRupees) || 0) && (
+                          <span className="text-[11px] font-mono font-bold text-primary">
+                            Change Due: ₹{(Number(cashTendered) - (Number(paidRupees) || 0)).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={cashTendered}
+                        onChange={(e) => setCashTendered(e.target.value)}
+                        placeholder={(Number(paidRupees) || 0).toString()}
+                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1 text-xs text-white font-mono focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
+
+                  {/* Owner PIN approval if required */}
+                  {!isOwner && (
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-semibold text-muted uppercase tracking-wider">
+                        Owner Approval PIN (if required)
+                      </label>
+                      <input
+                        type="password"
+                        maxLength={6}
+                        value={approvalPin}
+                        onChange={(e) => setApprovalPin(e.target.value)}
+                        placeholder="4-digit PIN..."
+                        className="w-full bg-bg border border-border rounded-lg px-2.5 py-1 text-xs text-white font-mono focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
+
+                  {checkoutError && (
+                    <div className="p-2.5 rounded-xl bg-danger/10 border border-danger/30 text-xs text-danger font-medium">
+                      {checkoutError}
+                    </div>
+                  )}
+
+                  {/* Single Action Button */}
+                  <button
+                    type="button"
+                    onClick={handleCheckout}
+                    disabled={cartItems.length === 0 || checkingOut}
+                    className="w-full py-3 rounded-xl bg-primary text-primary-ink font-black text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-neon disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {checkingOut ? (
+                      'Generating Bill...'
+                    ) : Number(paidRupees) < paiseToRupees(quote.grandTotalPaise) ? (
+                      <>
+                        <span>Generate Bill with Udhari</span>
+                        <span className="text-xs font-mono font-bold opacity-80">
+                          ({formatINR(Math.max(0, quote.grandTotalPaise - rupeesToPaise(Number(paidRupees) || 0)))} due)
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Generate Bill & Complete</span>
+                        <span className="text-xs font-mono font-bold opacity-80">({formatINR(quote.grandTotalPaise)})</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: COMPLETED RECEIPT & WHATSAPP GREETING SCREEN */}
+      {/* ========================================================================= */}
+      {completedBill && (() => {
+        const billMsg = generateBillWhatsAppMessage(completedBill);
+        const cleanPhone = (completedBill.customerSnapshot?.phone || '').replace(/\D/g, '');
+        const phoneWithCountry = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
+        const waLink = cleanPhone ? `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(billMsg)}` : `https://wa.me/?text=${encodeURIComponent(billMsg)}`;
+
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-lg p-6 space-y-4 text-center max-h-[92dvh] overflow-y-auto">
+                <CheckCircle className="w-12 h-12 text-primary mx-auto" />
+                <h3 className="text-xl font-black text-white">Sale Completed!</h3>
+                <p className="font-mono text-sm font-bold text-primary">{completedBill.billNo}</p>
+
+                {/* Amounts summary */}
+                <div className="grid grid-cols-3 gap-2 bg-[#0D140F] border border-border rounded-xl p-3 font-mono text-xs">
+                  <div>
+                    <span className="text-[10px] text-muted uppercase block">Total</span>
+                    <span className="font-bold text-white">{formatINR(completedBill.grandTotalPaise)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted uppercase block">Paid</span>
+                    <span className="font-bold text-primary">{formatINR(completedBill.paidPaise || completedBill.grandTotalPaise)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted uppercase block">Udhari</span>
+                    <span className={`font-bold ${completedBill.duePaise > 0 ? 'text-danger' : 'text-muted'}`}>
+                      {formatINR(completedBill.duePaise || 0)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Customer Details Snapshot */}
+                {completedBill.customerSnapshot?.phone && (
+                  <div className="bg-[#0D140F] border border-border rounded-xl p-3 text-left space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-white">{completedBill.customerSnapshot.name}</span>
+                      <span className="font-mono text-[11px] text-primary font-medium">{completedBill.customerSnapshot.phone}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-muted">
+                      <span>Village: {completedBill.customerSnapshot.address || 'Visapur'}</span>
+                      {completedBill.dueDate && (
+                        <span className="text-danger font-semibold">
+                          Promised: {new Date(completedBill.dueDate).toLocaleDateString('en-IN')}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* WhatsApp Message Preview */}
+                <div className="text-left space-y-1.5">
+                  <span className="text-[10px] font-bold text-muted uppercase tracking-wider block">
+                    Customer WhatsApp / SMS Greeting
+                  </span>
+                  <div className="bg-[#050805] border border-border/80 rounded-xl p-3 max-h-40 overflow-y-auto font-mono text-[11px] text-white/90 whitespace-pre-line leading-relaxed">
+                    {billMsg}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="py-2.5 rounded-xl bg-surface border border-border text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-surface-strong transition-colors"
+                  >
+                    <Printer className="w-4 h-4" /> Print
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(billMsg);
+                      setCopiedBillMsg(true);
+                      setTimeout(() => setCopiedBillMsg(false), 2000);
+                    }}
+                    className="py-2.5 rounded-xl bg-surface border border-border text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-surface-strong transition-colors"
+                  >
+                    {copiedBillMsg ? <Check className="w-4 h-4 text-primary" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedBillMsg ? 'Copied!' : 'Copy SMS'}</span>
+                  </button>
+
+                  <a
+                    href={waLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-2.5 rounded-xl bg-emerald-500 text-black text-xs font-black flex items-center justify-center gap-1.5 hover:bg-emerald-400 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" /> WhatsApp
+                  </a>
+                </div>
+
                 <button
-                  onClick={() => setShowPaymentModal(true)}
-                  disabled={cartItems.length === 0}
-                  className="w-full py-3 rounded-xl bg-primary text-primary-ink font-extrabold text-sm hover:brightness-110 active:scale-[0.98] transition-all shadow-neon"
+                  type="button"
+                  onClick={() => setCompletedBill(null)}
+                  className="w-full py-3 rounded-xl bg-primary text-primary-ink text-sm font-extrabold hover:brightness-110 shadow-neon"
                 >
-                  Proceed to Checkout ({formatINR(quote.grandTotalPaise)})
+                  Start New Bill
                 </button>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: CHECKOUT & PAYMENT SPLIT */}
-      {/* ========================================================================= */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-border">
-              <div>
-                <h3 className="font-bold text-text text-base">Select Payment Method</h3>
-                <p className="text-xs text-muted">Payable: {formatINR(quote.grandTotalPaise)}</p>
-              </div>
-              <button onClick={() => setShowPaymentModal(false)} className="text-muted hover:text-text">
-                <X className="w-5 h-5" />
-              </button>
             </div>
 
-            {checkoutError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">
-                {checkoutError}
-              </div>
-            )}
-
-            {/* Payment Mode Selector */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'cash', label: 'Cash', icon: DollarSign },
-                { id: 'upi', label: 'UPI / QR', icon: QrCode },
-                { id: 'card', label: 'Card', icon: CreditCard },
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setPaymentMode(tab.id)}
-                    className={`p-3 rounded-xl text-xs font-bold border flex flex-col items-center gap-1.5 transition-all ${
-                      paymentMode === tab.id
-                        ? 'bg-primary text-primary-ink border-primary shadow-sm'
-                        : 'bg-surface border-border text-muted hover:text-text'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Tendered Change Calculator if Cash */}
-            {paymentMode === 'cash' && (
-              <div className="space-y-2 bg-[#0D140F] p-3.5 rounded-xl border border-border">
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider">
-                  Cash Tendered (₹)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={cashTendered}
-                  onChange={(e) => setCashTendered(e.target.value)}
-                  placeholder={paiseToRupees(quote.grandTotalPaise).toString()}
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-primary"
-                />
-                {Number(cashTendered) > paiseToRupees(quote.grandTotalPaise) && (
-                  <p className="text-xs font-mono font-bold text-primary flex justify-between pt-1">
-                    <span>Change Due:</span>
-                    <span>
-                      {formatINR(rupeesToPaise(Number(cashTendered)) - quote.grandTotalPaise)}
-                    </span>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Owner PIN approval if staff */}
-            {!isOwner && (
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider">
-                  Owner Approval PIN (if required)
-                </label>
-                <input
-                  type="password"
-                  maxLength={6}
-                  value={approvalPin}
-                  onChange={(e) => setApprovalPin(e.target.value)}
-                  placeholder="4-digit PIN..."
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text font-mono focus:outline-none focus:border-primary"
-                />
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowPaymentModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCheckout}
-                disabled={checkingOut}
-                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-extrabold hover:brightness-110 disabled:opacity-50"
-              >
-                {checkingOut ? 'Checking out...' : 'Complete Sale'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL: COMPLETED RECEIPT SCREEN */}
-      {/* ========================================================================= */}
-      {completedBill && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4 text-center">
-            <CheckCircle className="w-12 h-12 text-primary mx-auto" />
-            <h3 className="text-xl font-black text-text">Sale Completed!</h3>
-            <p className="font-mono text-sm font-bold text-primary">{completedBill.billNo}</p>
-            <p className="text-xs text-muted">Total: {formatINR(completedBill.grandTotalPaise)}</p>
-
-            {/* Customer Details Snapshot */}
-            {completedBill.customerSnapshot?.phone && (
-              <div className="bg-[#0D140F] border border-border rounded-xl p-3.5 text-left space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-white">{completedBill.customerSnapshot.name}</span>
-                  <span className="font-mono text-[11px] text-primary font-medium">{completedBill.customerSnapshot.phone}</span>
+            {/* Printable 80mm Receipt */}
+            <div className="hidden print:block print:fixed print:inset-0 print:bg-white print:text-black print:p-6 print:z-[99999]">
+              <div className="max-w-[80mm] mx-auto text-xs font-mono space-y-2">
+                <div className="text-center pb-2 border-b border-black">
+                  <h2 className="text-base font-bold">CHAVA FITNESS CLUB</h2>
+                  <p>Tax Invoice</p>
+                  <p>Bill: {completedBill.billNo}</p>
                 </div>
-                {completedBill.customerSnapshot.address && (
-                  <p className="text-[11px] text-muted line-clamp-2">{completedBill.customerSnapshot.address}</p>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => window.print()}
-                className="flex-1 py-2.5 rounded-xl bg-surface border border-border text-text text-sm font-bold flex items-center justify-center gap-1.5 hover:bg-surface-strong"
-              >
-                <Printer className="w-4 h-4" /> Print
-              </button>
-
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(
-                  `Thank you for shopping at Chava Fitness Club! Bill: ${completedBill.billNo}, Amount: ${formatINR(
-                    completedBill.grandTotalPaise
-                  )}`
-                )}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 py-2.5 rounded-xl bg-green-500/20 border border-green-500/40 text-green-400 text-sm font-bold flex items-center justify-center gap-1.5 hover:bg-green-500/30"
-              >
-                <Share2 className="w-4 h-4" /> WhatsApp
-              </a>
-            </div>
-
-            <button
-              onClick={() => setCompletedBill(null)}
-              className="w-full py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-extrabold hover:brightness-110"
-            >
-              Start New Bill
-            </button>
-          </div>
-
-          {/* Printable 80mm Receipt */}
-          <div className="hidden print:block print:fixed print:inset-0 print:bg-white print:text-black print:p-6 print:z-[99999]">
-            <div className="max-w-[80mm] mx-auto text-xs font-mono space-y-2">
-              <div className="text-center pb-2 border-b border-black">
-                <h2 className="text-base font-bold">CHAVA FITNESS CLUB</h2>
-                <p>Tax Invoice</p>
-                <p>Bill: {completedBill.billNo}</p>
-              </div>
-              {completedBill.customerSnapshot?.phone && (
-                <div className="pb-2 border-b border-black">
-                  <p className="font-bold">{completedBill.customerSnapshot.name}</p>
-                  <p>Ph: {completedBill.customerSnapshot.phone}</p>
-                  {completedBill.customerSnapshot.address && (
-                    <p className="break-words line-clamp-2">{completedBill.customerSnapshot.address}</p>
-                  )}
-                </div>
-              )}
-              <div className="divide-y divide-dashed divide-black">
-                {completedBill.items?.map((it, idx) => (
-                  <div key={idx} className="flex justify-between py-1">
-                    <span>{it.nameSnapshot} x{it.qty}</span>
-                    <span>{formatINR(it.netPaise)}</span>
+                {completedBill.customerSnapshot?.phone && (
+                  <div className="pb-2 border-b border-black">
+                    <p className="font-bold">{completedBill.customerSnapshot.name}</p>
+                    <p>Ph: {completedBill.customerSnapshot.phone}</p>
+                    {completedBill.customerSnapshot.address && (
+                      <p className="break-words line-clamp-2">{completedBill.customerSnapshot.address}</p>
+                    )}
                   </div>
-                ))}
-              </div>
-              <div className="pt-2 border-t border-black flex justify-between font-bold text-sm">
-                <span>Total:</span>
-                <span>{formatINR(completedBill.grandTotalPaise)}</span>
+                )}
+                <div className="divide-y divide-dashed divide-black">
+                  {completedBill.items?.map((it, idx) => (
+                    <div key={idx} className="flex justify-between py-1">
+                      <span>{it.nameSnapshot} x{it.qty}</span>
+                      <span>{formatINR(it.netPaise)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="pt-2 border-t border-black flex justify-between font-bold text-sm">
+                  <span>Total:</span>
+                  <span>{formatINR(completedBill.grandTotalPaise)}</span>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* TAB 2: BILLS HISTORY */}
@@ -1092,8 +1318,17 @@ export function BillingPage() {
                       <td className="p-4 text-xs text-muted">{new Date(b.createdAt).toLocaleString('en-IN')}</td>
                       <td className="p-4 text-text">{b.customerSnapshot?.name || 'Walk-in'}</td>
                       <td className="p-4 text-center font-mono text-xs">{b.items?.length || 0}</td>
-                      <td className="p-4 text-right font-mono font-bold text-primary">
-                        {formatINR(b.grandTotalPaise)}
+                      <td className="p-4 text-right font-mono">
+                        <div className="font-bold text-primary">{formatINR(b.grandTotalPaise)}</div>
+                        {b.duePaise > 0 ? (
+                          <div className="text-[10px] text-danger font-bold mt-0.5">
+                            Udhari: {formatINR(b.duePaise)}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-success/80 font-semibold mt-0.5">
+                            Fully Paid
+                          </div>
+                        )}
                       </td>
                       <td className="p-4 text-center text-xs text-muted">{b.staffNameSnapshot}</td>
                       <td className="p-4 text-center">
@@ -1124,7 +1359,16 @@ export function BillingPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL / BOTTOM SHEET: NEW CUSTOMER QUICK-ADD */}
+      {/* TAB 3: UDHARI CREDIT DUES */}
+      {/* ========================================================================= */}
+      {activeTab === 'udhari' && (
+        <UdhariTab
+          user={user}
+          onBillSelect={(bill) => {
+            setCompletedBill(bill);
+          }}
+        />
+      )}
       {/* ========================================================================= */}
       {showNewCustomerModal && (
         <div

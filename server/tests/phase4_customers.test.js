@@ -189,6 +189,8 @@ describe('Phase 4: Customers, Ledger, Dues, Returns & Day Close', () => {
   });
 
   it('calculates Day Close cash summary with strict formula and redaction for staff', async () => {
+    const todayDateStr = new Date().toISOString().slice(0, 10);
+
     // Record a sale payment
     await Payment.create({
       billId: testBill._id,
@@ -199,7 +201,7 @@ describe('Phase 4: Customers, Ledger, Dues, Returns & Day Close', () => {
 
     // Record an expense cash entry
     await dayCloseService.recordCashEntry({
-      date: '2026-11-27',
+      date: todayDateStr,
       type: 'expense',
       amountPaise: 20000, // ₹200 tea/cleaning expense
       note: 'Tea and coffee for gym lounge',
@@ -207,16 +209,16 @@ describe('Phase 4: Customers, Ledger, Dues, Returns & Day Close', () => {
     });
 
     // Owner view: includes expectedCashPaise
-    const ownerSummary = await dayCloseService.getDaySummary('2026-11-27', false);
+    const ownerSummary = await dayCloseService.getDaySummary(todayDateStr, false);
     expect(ownerSummary.expectedCashPaise).toBeDefined();
 
     // Staff view: expectedCashPaise is stripped (blind count)
-    const staffSummary = await dayCloseService.getDaySummary('2026-11-27', true);
+    const staffSummary = await dayCloseService.getDaySummary(todayDateStr, true);
     expect(staffSummary.expectedCashPaise).toBeUndefined();
 
     // Close day
     const dayClose = await dayCloseService.closeDay({
-      date: '2026-11-27',
+      date: todayDateStr,
       countedCashPaise: 130000, // 1500 - 200 = 1300 expected, counted 1300 -> 0 difference
       denominations: { '500': 2, '100': 3 },
       note: 'All tallies match',

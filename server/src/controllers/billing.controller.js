@@ -1,5 +1,6 @@
 import { sendSuccess } from '../utils/apiResponse.js';
 import { billingService } from '../services/billing/billing.service.js';
+import { dueService } from '../services/billing/due.service.js';
 
 export const billingController = {
   async getQuote(req, res, next) {
@@ -68,6 +69,48 @@ export const billingController = {
     try {
       const held = await billingService.recallHeldCart(req.params.holdCode);
       return sendSuccess(res, { held });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getUdhariList(req, res, next) {
+    try {
+      const result = await dueService.getUdhariList({
+        filter: req.query.filter || 'all',
+        search: req.query.search || '',
+      });
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async settleBillDue(req, res, next) {
+    try {
+      const result = await dueService.settleBillDue(
+        {
+          billId: req.params.billId,
+          amountPaise: req.body.amountPaise != null ? Number(req.body.amountPaise) : null,
+          mode: req.body.mode || 'cash',
+          refNo: req.body.refNo || '',
+        },
+        req.user
+      );
+      return sendSuccess(res, result, 'Bill due settled successfully');
+    } catch (err) {
+      if (!err.statusCode) err.statusCode = 400;
+      next(err);
+    }
+  },
+
+  async markReminderSent(req, res, next) {
+    try {
+      const bill = await dueService.markReminderSent({
+        billId: req.params.billId,
+        stage: req.body.stage,
+      });
+      return sendSuccess(res, { bill }, 'Reminder marked as sent');
     } catch (err) {
       next(err);
     }

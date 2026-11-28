@@ -8,10 +8,12 @@ import { Product } from '../../models/Product.js';
 import { StockBatch } from '../../models/StockBatch.js';
 import { StockMovement } from '../../models/StockMovement.js';
 import { Customer } from '../../models/Customer.js';
+import { CustomerLedger } from '../../models/CustomerLedger.js';
 import { Settings } from '../../models/Settings.js';
 import { User } from '../../models/User.js';
 import { nextSeq, getFinancialYear } from '../../models/Counter.js';
 import { stockService } from '../stock.service.js';
+import { toAsciiDigits } from '../../utils/toAsciiDigits.js';
 
 export const billingService = {
   /**
@@ -52,8 +54,12 @@ export const billingService = {
     const {
       items = [],
       billDiscount = null,
-      customerId = null,
+      customerId: explicitCustomerId = null,
+      customerName = null,
+      customerPhone = null,
+      customerAddress = null,
       payments = [],
+      dueDate = null,
       idempotencyKey = null,
       approvalPin = null,
       expectedGrandTotalPaise = null,
@@ -76,28 +82,56 @@ export const billingService = {
       state: 'Maharashtra',
       billPrefix: 'PS',
       staffMaxDiscountPct: 10,
+      defaultCustomerAddress: 'Visapur',
     };
 
     let customer = null;
+    let customerId = explicitCustomerId;
     let customerSnapshot = {
       name: 'Walk-in Customer',
       phone: '',
       gstin: '',
       state: settings.state || 'Maharashtra',
-      address: '',
+      address: settings.defaultCustomerAddress || 'Visapur',
     };
 
     if (customerId) {
       customer = await Customer.findById(customerId);
-      if (customer) {
-        customerSnapshot = {
-          name: customer.name,
-          phone: customer.phone,
-          gstin: customer.gstin || '',
-          state: customer.state || settings.state || 'Maharashtra',
-          address: customer.address || '',
-        };
+    } else if (customerPhone) {
+      const cleanDigits = toAsciiDigits(customerPhone).replace(/\D/g, '');
+      const normalizedPhone =
+        cleanDigits.length === 12 && cleanDigits.startsWith('91')
+          ? cleanDigits.slice(2)
+          : cleanDigits.length === 11 && cleanDigits.startsWith('0')
+          ? cleanDigits.slice(1)
+          : cleanDigits;
+
+      if (normalizedPhone.length === 10) {
+        customer = await Customer.findOne({ phone: normalizedPhone });
+        if (!customer && customerName && customerName.trim().length >= 2) {
+          customer = await Customer.create({
+            name: customerName.trim(),
+            phone: normalizedPhone,
+            address: (customerAddress || settings.defaultCustomerAddress || 'Visapur').trim().slice(0, 120),
+            state: settings.state || 'Maharashtra',
+            dueBalancePaise: 0,
+          });
+        }
+        if (customer) {
+          customerId = customer._id;
+        }
       }
+    }
+
+    if (customer) {
+      customerId = customer._id;
+      customerSnapshot = {
+        name: customer.name,
+        phone: customer.phone,
+        gstin: customer.gstin || '',
+        state: customer.state || settings.state || 'Maharashtra',
+        address: customer.address || settings.defaultCustomerAddress || 'Visapur',
+      };
     }
 
     const isInterState = customerSnapshot.state && customerSnapshot.state !== settings.state;
@@ -316,6 +350,7 @@ export const billingService = {
       savingsPaise: quote.savingsPaise,
       paidPaise: totalPaidPaise,
       duePaise,
+      dueDate: dueDate ? new Date(dueDate) : null,
       paymentSummary: paymentRecords.map((p) => ({ mode: p.mode, amountPaise: p.amountPaise })),
       profitPaise: quote.profitPaise,
       idempotencyKey,
@@ -340,6 +375,17 @@ export const billingService = {
     if (customer && duePaise > 0) {
       customer.dueBalancePaise += duePaise;
       await customer.save();
+
+      await CustomerLedger.create({
+        customerId: customer._id,
+        type: 'bill_due',
+        amountPaise: duePaise,
+        balanceAfterPaise: customer.dueBalancePaise,
+        refType: 'bill',
+        refId: bill._id,
+        note: `Credit sale (Udhari) from bill ${bill.billNo}${dueDate ? ` (Promise date: ${new Date(dueDate).toLocaleDateString('en-IN')})` : ''}`,
+        createdBy: user._id,
+      });
     }
 
     // Redact profit for staff
