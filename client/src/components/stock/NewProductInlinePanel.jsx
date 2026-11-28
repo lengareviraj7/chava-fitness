@@ -537,6 +537,7 @@ export function NewProductInlinePanel({
                         type="number"
                         min="1"
                         required
+                        placeholder="10"
                         value={v.qty}
                         onChange={(e) => handleVariantChange(idx, 'qty', e.target.value)}
                         className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono"
@@ -554,7 +555,7 @@ export function NewProductInlinePanel({
                         required
                         value={v.unitCostRupees}
                         onChange={(e) => handleVariantChange(idx, 'unitCostRupees', e.target.value)}
-                        placeholder="2000"
+                        placeholder="2800"
                         className="w-full bg-bg border border-border rounded-lg px-2.5 py-1.5 text-base sm:text-xs text-text focus:outline-none focus:border-primary font-mono"
                       />
                     </div>

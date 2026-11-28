@@ -24,6 +24,10 @@ import {
   ShieldAlert,
   Check,
   Edit2,
+  CreditCard,
+  Receipt,
+  History,
+  Wallet,
 } from 'lucide-react';
 import { stockApi, purchasesApi, suppliersApi } from '../api/stock.js';
 import { productsApi, categoriesApi, brandsApi } from '../api/products.js';
@@ -79,9 +83,14 @@ export function StockPage() {
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [supplierError, setSupplierError] = useState('');
 
-  // Supplier Payment Modal
+  // Supplier Ledger & Payment State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentSupplier, setPaymentSupplier] = useState(null);
+  const [selectedSupplierLedger, setSelectedSupplierLedger] = useState(null);
+  const [supplierSummary, setSupplierSummary] = useState(null);
+  const [loadingSupplierSummary, setLoadingSupplierSummary] = useState(false);
+  const [targetPurchaseForPay, setTargetPurchaseForPay] = useState(null);
+  const [paymentSuccessMsg, setPaymentSuccessMsg] = useState('');
   const [paymentForm, setPaymentForm] = useState({ amount: '', mode: 'cash', refNo: '' });
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -251,25 +260,104 @@ export function StockPage() {
     }
   }
 
-  // Handle Supplier Payment
+  // Open Supplier Ledger / Details Modal
+  const openSupplierLedger = useCallback(
+    async (supplierOrId, targetPurchase = null) => {
+      const supId = typeof supplierOrId === 'object' ? supplierOrId?._id : supplierOrId;
+      const supObj =
+        typeof supplierOrId === 'object' && supplierOrId?.name
+          ? supplierOrId
+          : suppliers.find((s) => s._id === supId) || { _id: supId, name: 'Supplier' };
+
+      setSelectedSupplierLedger(supObj);
+      setTargetPurchaseForPay(targetPurchase);
+      setPaymentSuccessMsg('');
+      setPaymentError('');
+      setLoadingSupplierSummary(true);
+
+      try {
+        const res = await suppliersApi.getSummary(supId);
+        const data = res.data?.data || res.data;
+        setSupplierSummary(data);
+        if (data?.supplier) {
+          setSelectedSupplierLedger(data.supplier);
+        }
+        const initialAmount = targetPurchase
+          ? paiseToRupees(targetPurchase.duePaise)
+          : paiseToRupees(data?.pendingDuePaise ?? supObj?.pendingDuePaise ?? 0);
+
+        setPaymentForm({
+          amount: initialAmount > 0 ? String(initialAmount) : '',
+          mode: 'cash',
+          refNo: '',
+        });
+      } catch (err) {
+        setPaymentError(err.response?.data?.error?.message || 'Failed to load supplier ledger');
+      } finally {
+        setLoadingSupplierSummary(false);
+      }
+    },
+    [suppliers]
+  );
+
+  // Handle Supplier Payment & Clear Bill
   async function handlePaymentSubmit(e) {
     e.preventDefault();
-    if (!paymentSupplier) return;
+    const currentSupplier = selectedSupplierLedger || paymentSupplier;
+    if (!currentSupplier) return;
     setPaying(true);
     setPaymentError('');
+    setPaymentSuccessMsg('');
     try {
+      const amountNum = Number(paymentForm.amount);
+      if (!amountNum || amountNum <= 0) {
+        throw new Error('Please enter a valid payment amount greater than zero');
+      }
+
       await suppliersApi.recordPayment({
-        supplierId: paymentSupplier._id,
-        amountPaise: rupeesToPaise(Number(paymentForm.amount)),
+        supplierId: currentSupplier._id,
+        purchaseId: targetPurchaseForPay?._id || null,
+        amountPaise: rupeesToPaise(amountNum),
         mode: paymentForm.mode,
         refNo: paymentForm.refNo,
       });
-      setShowPaymentModal(false);
-      setPaymentForm({ amount: '', mode: 'cash', refNo: '' });
+
+      // Refresh supplier summary ledger
+      const summaryRes = await suppliersApi.getSummary(currentSupplier._id);
+      const updatedSummary = summaryRes.data?.data || summaryRes.data;
+      setSupplierSummary(updatedSummary);
+
+      // If user had a purchase open, refresh its data
+      if (
+        selectedPurchase &&
+        (selectedPurchase.supplierId?._id === currentSupplier._id ||
+          selectedPurchase.supplierId === currentSupplier._id)
+      ) {
+        const updatedPurchase = updatedSummary.purchases?.find((p) => p._id === selectedPurchase._id);
+        if (updatedPurchase) {
+          setSelectedPurchase((prev) => ({ ...prev, ...updatedPurchase }));
+        }
+      }
+
+      const remDue = updatedSummary?.pendingDuePaise ?? 0;
+      setPaymentSuccessMsg(
+        remDue === 0
+          ? `Payment of ₹${amountNum.toLocaleString('en-IN')} recorded! All bills are completely cleared (Balance: ₹0.00).`
+          : `Payment of ₹${amountNum.toLocaleString('en-IN')} recorded! Remaining balance to pay: ${formatINR(remDue)}.`
+      );
+
+      setPaymentForm({
+        amount: remDue > 0 ? String(paiseToRupees(remDue)) : '',
+        mode: paymentForm.mode,
+        refNo: '',
+      });
+      setTargetPurchaseForPay(null);
+
+      // Refresh global suppliers and purchases
       loadSuppliers();
       loadPurchases();
     } catch (err) {
-      setPaymentError(err.response?.data?.error?.message || 'Failed to record payment');
+      setPaymentError(err.response?.data?.error?.message || err.message || 'Failed to record payment');
     } finally {
       setPaying(false);
     }
@@ -902,6 +990,27 @@ export function StockPage() {
               </div>
             </div>
 
+            {selectedPurchase.status !== 'voided' && selectedPurchase.duePaise > 0 && isOwner && (
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-amber-300">Payment Due for this Inward</p>
+                  <p className="text-[11px] text-muted">
+                    Pending balance to supplier: <span className="text-amber-400 font-mono font-bold">{formatINR(selectedPurchase.duePaise)}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    openSupplierLedger(selectedPurchase.supplierId, selectedPurchase);
+                  }}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-primary text-primary-ink font-bold text-xs hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm shrink-0"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Pay Balance Due ({formatINR(selectedPurchase.duePaise)})
+                </button>
+              </div>
+            )}
+
             {selectedPurchase.status !== 'voided' && (
               <form onSubmit={handleVoidPurchase} className="pt-3 border-t border-border space-y-3">
                 <div>
@@ -955,27 +1064,79 @@ export function StockPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {suppliers.map((s) => (
-                <div key={s._id} className="bg-surface border border-border rounded-2xl p-4 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-bold text-text text-base">{s.name}</h3>
-                    <p className="text-xs text-muted mt-0.5">{s.phone}</p>
-                    {s.gstin && <p className="text-xs text-muted font-mono mt-0.5">GSTIN: {s.gstin}</p>}
-                    {s.address && <p className="text-xs text-muted/60 mt-1 line-clamp-2">{s.address}</p>}
+              {suppliers.map((s) => {
+                const hasDue = (s.pendingDuePaise || 0) > 0;
+                return (
+                  <div
+                    key={s._id}
+                    onClick={() => openSupplierLedger(s)}
+                    className="bg-surface border border-border hover:border-primary/50 transition-all rounded-2xl p-4 flex flex-col justify-between cursor-pointer group shadow-sm hover:shadow-md"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-bold text-text text-base group-hover:text-primary transition-colors">
+                          {s.name}
+                        </h3>
+                        {hasDue ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-extrabold uppercase shrink-0">
+                            Due
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold uppercase shrink-0">
+                            Cleared
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-muted mt-0.5 font-mono">{s.phone}</p>
+                      {s.gstin && <p className="text-xs text-muted font-mono mt-0.5">GSTIN: {s.gstin}</p>}
+                      {s.address && <p className="text-xs text-muted/60 mt-1 line-clamp-2">{s.address}</p>}
+
+                      {/* Outstanding Due & Inward Summary */}
+                      <div
+                        className={`mt-3.5 p-2.5 rounded-xl border ${
+                          hasDue ? 'bg-amber-500/10 border-amber-500/30' : 'bg-[#0D140F] border-border'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted font-medium">
+                            {hasDue ? 'Remaining to Pay:' : 'Supplier Due:'}
+                          </span>
+                          <span
+                            className={`font-mono font-bold ${
+                              hasDue ? 'text-amber-400 text-sm' : 'text-emerald-400'
+                            }`}
+                          >
+                            {hasDue ? formatINR(s.pendingDuePaise) : '₹0.00 (All Cleared)'}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-muted mt-1 pt-1 border-t border-border/40">
+                          <span>Total Inward:</span>
+                          <span className="font-mono text-text">{formatINR(s.totalPurchasedPaise || 0)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-border flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openSupplierLedger(s);
+                        }}
+                        className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                          hasDue
+                            ? 'bg-primary text-primary-ink hover:brightness-110 shadow-sm'
+                            : 'bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20'
+                        }`}
+                      >
+                        <Receipt className="w-3.5 h-3.5" />
+                        {hasDue ? `Pay Due (${formatINR(s.pendingDuePaise)})` : 'View Ledger & Receipts'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                    <button
-                      onClick={() => {
-                        setPaymentSupplier(s);
-                        setShowPaymentModal(true);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-xs font-bold text-primary hover:bg-primary/20 transition-all"
-                    >
-                      Record Payment
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1072,85 +1233,395 @@ export function StockPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL: RECORD SUPPLIER PAYMENT */}
+      {/* MODAL: SUPPLIER LEDGER, INWARD RECEIPTS & BILL CLEARING */}
       {/* ========================================================================= */}
-      {showPaymentModal && paymentSupplier && createPortal(
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-border">
-              <div>
-                <h3 className="font-bold text-text">Pay Supplier</h3>
-                <p className="text-xs text-muted">{paymentSupplier.name}</p>
+      {selectedSupplierLedger && createPortal(
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[110] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-bg-elevated border border-border rounded-2xl w-full max-w-2xl max-h-[92dvh] flex flex-col shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-border flex items-start justify-between gap-4 bg-surface/50">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                  <Truck className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-text text-lg tracking-tight flex items-center gap-2">
+                    {selectedSupplierLedger.name}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-1">
+                    <span>
+                      Phone: <strong className="text-text font-mono">{selectedSupplierLedger.phone || 'N/A'}</strong>
+                    </span>
+                    {selectedSupplierLedger.gstin && (
+                      <>
+                        <span>•</span>
+                        <span>
+                          GSTIN: <strong className="text-text font-mono">{selectedSupplierLedger.gstin}</strong>
+                        </span>
+                      </>
+                    )}
+                    {selectedSupplierLedger.address && (
+                      <>
+                        <span>•</span>
+                        <span>{selectedSupplierLedger.address}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
-              <button onClick={() => setShowPaymentModal(false)} className="text-muted hover:text-text">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSupplierLedger(null);
+                  setPaymentSupplier(null);
+                  setShowPaymentModal(false);
+                  setTargetPurchaseForPay(null);
+                  setPaymentSuccessMsg('');
+                  setPaymentError('');
+                }}
+                className="text-muted hover:text-text p-1.5 rounded-lg hover:bg-surface border border-transparent hover:border-border transition-all"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {paymentError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">
-                {paymentError}
-              </div>
-            )}
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-5">
+              {/* Error Alert */}
+              {paymentError && (
+                <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{paymentError}</span>
+                </div>
+              )}
 
-            <form onSubmit={handlePaymentSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                  Payment Amount (₹)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
-                  placeholder="e.g. 15000"
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary font-mono"
-                />
-              </div>
+              {/* Success Alert */}
+              {paymentSuccessMsg && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-semibold">{paymentSuccessMsg}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedSupplierLedger(null);
+                      setPaymentSupplier(null);
+                      setShowPaymentModal(false);
+                      setTargetPurchaseForPay(null);
+                      setPaymentSuccessMsg('');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-[11px] font-bold text-emerald-200 shrink-0 transition-all"
+                  >
+                    Close Modal
+                  </button>
+                </div>
+              )}
 
-              <div>
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">Mode</label>
-                <select
-                  value={paymentForm.mode}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, mode: e.target.value }))}
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-surface border border-border rounded-xl p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted">Total Inward</p>
+                  <p className="text-base font-extrabold text-text font-mono mt-0.5">
+                    {formatINR(
+                      supplierSummary?.totalPurchasedPaise ?? selectedSupplierLedger.totalPurchasedPaise ?? 0
+                    )}
+                  </p>
+                </div>
+
+                <div className="bg-surface border border-border rounded-xl p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted">Total Paid</p>
+                  <p className="text-base font-extrabold text-text font-mono mt-0.5">
+                    {formatINR(supplierSummary?.totalPaidPaise ?? 0)}
+                  </p>
+                </div>
+
+                <div
+                  className={`rounded-xl p-3 border ${
+                    (supplierSummary?.pendingDuePaise ?? selectedSupplierLedger.pendingDuePaise ?? 0) > 0
+                      ? 'bg-amber-500/10 border-amber-500/30'
+                      : 'bg-emerald-500/10 border-emerald-500/30'
+                  }`}
                 >
-                  <option value="cash">Cash</option>
-                  <option value="upi">UPI / QR</option>
-                  <option value="bank">Bank Transfer / NEFT</option>
-                </select>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted">Balance to Pay</p>
+                  <p
+                    className={`text-base font-extrabold font-mono mt-0.5 flex items-center gap-1.5 ${
+                      (supplierSummary?.pendingDuePaise ?? selectedSupplierLedger.pendingDuePaise ?? 0) > 0
+                        ? 'text-amber-400'
+                        : 'text-emerald-400'
+                    }`}
+                  >
+                    {(supplierSummary?.pendingDuePaise ?? selectedSupplierLedger.pendingDuePaise ?? 0) === 0 ? (
+                      <>
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        ₹0.00 (All Cleared)
+                      </>
+                    ) : (
+                      formatINR(supplierSummary?.pendingDuePaise ?? selectedSupplierLedger.pendingDuePaise ?? 0)
+                    )}
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1">
-                  Reference / Note (Optional)
-                </label>
-                <input
-                  value={paymentForm.refNo}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, refNo: e.target.value }))}
-                  placeholder="UTR / Cheque / Note"
-                  className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
-                />
+              {/* Action Form: Pay Supplier & Clear Bill */}
+              <div className="bg-[#0D140F] border border-border rounded-xl p-4 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-2.5">
+                  <h4 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                    <Wallet className="w-4 h-4 text-primary" />
+                    {targetPurchaseForPay ? (
+                      <span>
+                        Pay Receipt:{' '}
+                        <strong className="text-primary font-mono">{targetPurchaseForPay.purchaseNo}</strong> (Due:{' '}
+                        {formatINR(targetPurchaseForPay.duePaise)})
+                      </span>
+                    ) : (
+                      <span>Pay Supplier & Clear Bill</span>
+                    )}
+                  </h4>
+
+                  {targetPurchaseForPay && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetPurchaseForPay(null);
+                        setPaymentForm((f) => ({
+                          ...f,
+                          amount: String(paiseToRupees(supplierSummary?.pendingDuePaise || 0)),
+                        }));
+                      }}
+                      className="text-[11px] text-muted hover:text-primary transition-colors underline"
+                    >
+                      Clear Receipt Filter (Pay Total Due)
+                    </button>
+                  )}
+                </div>
+
+                <form onSubmit={handlePaymentSubmit} className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-muted uppercase tracking-wider">
+                          Amount to Pay (₹) *
+                        </label>
+                        {((targetPurchaseForPay?.duePaise || supplierSummary?.pendingDuePaise) ?? 0) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const due = targetPurchaseForPay
+                                ? paiseToRupees(targetPurchaseForPay.duePaise)
+                                : paiseToRupees(supplierSummary?.pendingDuePaise || 0);
+                              setPaymentForm((f) => ({ ...f, amount: String(due) }));
+                            }}
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 hover:bg-primary/30 text-primary font-bold transition-colors"
+                          >
+                            Pay Full Due (
+                            {formatINR(targetPurchaseForPay?.duePaise || supplierSummary?.pendingDuePaise || 0)})
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        step="any"
+                        required
+                        value={paymentForm.amount}
+                        onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                        placeholder="e.g. 2000"
+                        className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
+                        Payment Mode *
+                      </label>
+                      <select
+                        value={paymentForm.mode}
+                        onChange={(e) => setPaymentForm((f) => ({ ...f, mode: e.target.value }))}
+                        className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                      >
+                        <option value="cash">Cash</option>
+                        <option value="upi">UPI / QR Code</option>
+                        <option value="bank">Bank Transfer / NEFT</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted uppercase tracking-wider mb-1">
+                      Payment Note / Reference No (Optional)
+                    </label>
+                    <input
+                      value={paymentForm.refNo}
+                      onChange={(e) => setPaymentForm((f) => ({ ...f, refNo: e.target.value }))}
+                      placeholder="e.g. UTR / Cheque No / Cash voucher"
+                      className="w-full bg-bg border border-border rounded-xl px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={paying || !paymentForm.amount || Number(paymentForm.amount) <= 0}
+                    className="w-full py-2.5 rounded-xl bg-primary text-primary-ink font-bold text-sm hover:brightness-110 active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <Check className="w-4 h-4" />
+                    {paying
+                      ? 'Recording Payment...'
+                      : paymentForm.amount && Number(paymentForm.amount) > 0
+                      ? `Pay ₹${Number(paymentForm.amount).toLocaleString('en-IN')} & Clear Bill`
+                      : 'Record Payment & Clear Bill'}
+                  </button>
+                </form>
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-muted hover:text-text"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={paying || !paymentForm.amount}
-                  className="flex-1 py-2.5 rounded-xl bg-primary text-primary-ink text-sm font-bold hover:brightness-110 disabled:opacity-50"
-                >
-                  {paying ? 'Recording...' : 'Record Payment'}
-                </button>
+              {/* Inward Receipts & Bills Section */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    <Receipt className="w-3.5 h-3.5 text-primary" />
+                    Inward Purchase Receipts & Invoices ({supplierSummary?.purchases?.length || 0})
+                  </h4>
+                  {loadingSupplierSummary && <span className="text-xs text-muted">Refreshing...</span>}
+                </div>
+
+                {loadingSupplierSummary ? (
+                  <div className="p-6 text-center text-xs text-muted bg-surface rounded-xl border border-border">
+                    Loading invoices & receipts...
+                  </div>
+                ) : !supplierSummary?.purchases || supplierSummary.purchases.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted bg-surface rounded-xl border border-border">
+                    No purchase receipts found for this supplier.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {supplierSummary.purchases.map((p) => {
+                      const isTargeted = targetPurchaseForPay?._id === p._id;
+                      const isPaid = p.duePaise === 0;
+                      return (
+                        <div
+                          key={p._id}
+                          className={`p-3 rounded-xl border transition-all ${
+                            isTargeted
+                              ? 'bg-primary/5 border-primary shadow-sm'
+                              : 'bg-surface border-border hover:border-border/80'
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-text text-sm font-mono">{p.purchaseNo}</span>
+                                {p.supplierInvoiceNo && (
+                                  <span className="text-xs text-muted">Inv: #{p.supplierInvoiceNo}</span>
+                                )}
+                                {isPaid ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" /> Cleared
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
+                                    Due: {formatINR(p.duePaise)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-muted mt-0.5">
+                                Inward Date:{' '}
+                                {new Date(p.invoiceDate).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}{' '}
+                                • {p.items?.length || 0} line item(s)
+                              </p>
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-3 font-mono">
+                              <div className="text-right text-xs">
+                                <span className="text-muted block text-[10px] uppercase">Total / Due</span>
+                                <span className="text-text font-bold">{formatINR(p.totalPaise)}</span>
+                                {!isPaid && (
+                                  <span className="text-amber-400 font-bold block text-[11px]">
+                                    Due: {formatINR(p.duePaise)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {!isPaid && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTargetPurchaseForPay(p);
+                                    setPaymentForm((f) => ({
+                                      ...f,
+                                      amount: String(paiseToRupees(p.duePaise)),
+                                    }));
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                                    isTargeted
+                                      ? 'bg-primary text-primary-ink'
+                                      : 'bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20'
+                                  }`}
+                                >
+                                  {isTargeted ? 'Selected' : 'Pay This'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </form>
+
+              {/* Payment History Section */}
+              {supplierSummary?.payments && supplierSummary.payments.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <h4 className="text-xs font-bold text-muted uppercase tracking-wider flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-primary" />
+                    Payment History ({supplierSummary.payments.length})
+                  </h4>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {supplierSummary.payments.map((pm) => (
+                      <div
+                        key={pm._id}
+                        className="bg-surface border border-border rounded-lg p-2.5 text-xs flex items-center justify-between font-mono"
+                      >
+                        <div>
+                          <span className="font-bold text-text">{formatINR(pm.amountPaise)}</span>
+                          <span className="text-muted ml-2 uppercase text-[11px]">via {pm.mode}</span>
+                          {pm.refNo && <span className="text-muted/70 ml-2">({pm.refNo})</span>}
+                        </div>
+                        <span className="text-muted text-[11px]">
+                          {new Date(pm.paidAt).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 border-t border-border bg-surface/50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSupplierLedger(null);
+                  setPaymentSupplier(null);
+                  setShowPaymentModal(false);
+                  setTargetPurchaseForPay(null);
+                  setPaymentSuccessMsg('');
+                  setPaymentError('');
+                }}
+                className="px-5 py-2 rounded-xl border border-border text-xs font-semibold text-muted hover:text-text hover:bg-surface transition-all"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>,
         document.body

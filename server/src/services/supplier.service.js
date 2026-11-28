@@ -16,7 +16,29 @@ export const supplierService = {
         { gstin: { $regex: search, $options: 'i' } },
       ];
     }
-    return Supplier.find(filter).sort({ name: 1 });
+    const suppliers = await Supplier.find(filter).sort({ name: 1 }).lean();
+
+    // Aggregate pending dues and total purchased for each supplier
+    const dues = await Purchase.aggregate([
+      { $match: { status: 'active' } },
+      {
+        $group: {
+          _id: '$supplierId',
+          pendingDuePaise: { $sum: '$duePaise' },
+          totalPurchasedPaise: { $sum: '$totalPaise' },
+        },
+      },
+    ]);
+    const dueMap = new Map(dues.map((d) => [String(d._id), d]));
+
+    return suppliers.map((s) => {
+      const stats = dueMap.get(String(s._id)) || {};
+      return {
+        ...s,
+        pendingDuePaise: stats.pendingDuePaise || 0,
+        totalPurchasedPaise: stats.totalPurchasedPaise || 0,
+      };
+    });
   },
 
   async getById(id) {

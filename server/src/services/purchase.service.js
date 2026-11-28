@@ -142,6 +142,7 @@ export const purchaseService = {
       // 2. Validate and process newProducts
       const tempVarMap = new Map();
       const seenBarcodes = new Set();
+      const seenSkus = new Set();
 
       for (const np of newProducts) {
         const categoryId = np.categoryId || np.category;
@@ -230,13 +231,24 @@ export const purchaseService = {
 
           let sku = v.sku?.trim();
           if (!sku) {
-            sku = generateSku({
+            const baseSku = generateSku({
               brand: np.brand,
               name: np.name,
               flavour: v.flavour,
               size: v.size,
             });
+            sku = baseSku;
+            let counter = 1;
+            while (
+              seenSkus.has(sku) ||
+              (session
+                ? await Product.exists({ 'variants.sku': sku }).session(session)
+                : await Product.exists({ 'variants.sku': sku }))
+            ) {
+              sku = `${baseSku}-${counter++}`;
+            }
           }
+          seenSkus.add(sku);
 
           preparedVariants.push({
             name: `${v.flavour || 'Standard'} ${v.size || ''}`.trim(),
@@ -371,13 +383,24 @@ export const purchaseService = {
 
         let sku = nv.sku?.trim();
         if (!sku) {
-          sku = generateSku({
+          const baseSku = generateSku({
             brand: prod.brand,
             name: prod.name,
             flavour: nv.flavour,
             size: nv.size,
           });
+          sku = baseSku;
+          let counter = 1;
+          while (
+            seenSkus.has(sku) ||
+            (session
+              ? await Product.exists({ 'variants.sku': sku }).session(session)
+              : await Product.exists({ 'variants.sku': sku }))
+          ) {
+            sku = `${baseSku}-${counter++}`;
+          }
         }
+        seenSkus.add(sku);
 
         const newVarData = {
           name: `${nv.flavour || 'Standard'} ${nv.size || ''}`.trim(),
