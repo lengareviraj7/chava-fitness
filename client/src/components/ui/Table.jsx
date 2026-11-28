@@ -21,7 +21,7 @@ export const TableHeader = ({ children, className }) => {
 
 export const TableBody = ({ children, className }) => {
   return (
-    <tbody className={cn("divide-y divide-border-theme/60", className)}>
+    <tbody className={cn("divide-y border-border", className)}>
       {children}
     </tbody>
   );
@@ -32,7 +32,7 @@ export const TableRow = ({ children, className, onClick }) => {
     <tr 
       onClick={onClick}
       className={cn(
-        "hover:bg-bg-secondary/40 transition-colors",
+        "hover:bg-white/[0.06] active:bg-primary/[0.12] transition-colors",
         onClick && "cursor-pointer",
         className
       )}

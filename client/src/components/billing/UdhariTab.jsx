@@ -362,7 +362,7 @@ export function UdhariTab({ user, onBillSelect }) {
                 </div>
 
                 {/* Amounts Breakdown */}
-                <div className="bg-surface/80 border border-border/60 rounded-xl p-3 space-y-1.5 font-mono text-xs">
+                <div className="bg-[#0D140F] border border-border rounded-xl p-3 space-y-1.5 font-mono text-xs">
                   <div className="flex justify-between text-muted text-[11px]">
                     <span>Total Bill:</span>
                     <span>{formatINR(bill.grandTotalPaise)}</span>

@@ -207,7 +207,7 @@ export function ReportsPage() {
                           <th className="text-right pb-2">Total Invoice Value</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border/50">
+                      <tbody className="divide-y divide-border">
                         {reportData.b2cs?.map((row) => (
                           <tr key={row.gstRate} className="hover:bg-bg/50">
                             <td className="py-2.5 font-bold text-text">{row.gstRate}%</td>
@@ -238,7 +238,7 @@ export function ReportsPage() {
                           <th className="text-right pb-2">Grand Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border/50">
+                      <tbody className="divide-y divide-border">
                         {reportData.b2b?.map((row) => (
                           <tr key={row.billNo} className="hover:bg-bg/50">
                             <td className="py-2.5 font-bold text-text font-mono">{row.billNo}</td>
@@ -299,7 +299,7 @@ export function ReportsPage() {
                         <th className="text-right pb-2">Total Valuation</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/50">
+                    <tbody className="divide-y divide-border">
                       {reportData.batches?.map((b) => (
                         <tr key={b.batchId} className="hover:bg-bg/50">
                           <td className="py-2.5 font-bold text-text">
@@ -335,7 +335,7 @@ export function ReportsPage() {
                     <span className="text-muted">Cost of Goods Sold (COGS)</span>
                     <span className="font-bold text-danger">-{formatINR(reportData.netCogsPaise || 0)}</span>
                   </div>
-                  <div className="flex justify-between py-2 border-b border-border bg-surface-strong/50 px-2 rounded-lg">
+                  <div className="flex justify-between py-2 border-b border-border bg-white/[0.05] px-2 rounded-lg">
                     <span className="font-bold text-text">Gross Profit</span>
                     <div className="text-right">
                       <span className="font-extrabold text-success">{formatINR(reportData.grossProfitPaise || 0)}</span>
@@ -393,7 +393,7 @@ export function ReportsPage() {
                           <th className="text-right pb-2">Due Balance</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border/50">
+                      <tbody className="divide-y divide-border">
                         {reportData.customers?.map((c) => (
                           <tr key={c.customerId} className="hover:bg-bg/50">
                             <td className="py-2.5 font-bold text-text">{c.name}</td>
@@ -429,7 +429,7 @@ export function ReportsPage() {
                         <th className="text-right pb-2">Suggested Reorder</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border/50">
+                    <tbody className="divide-y divide-border">
                       {reportData.items?.map((item) => (
                         <tr key={item.variantId} className="hover:bg-bg/50">
                           <td className="py-2.5 font-bold text-text">

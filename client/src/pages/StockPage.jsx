@@ -420,7 +420,7 @@ export function StockPage() {
                       <th className="p-4 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/60">
+                  <tbody className="divide-y divide-border">
                     {stockItems.map((item) => {
                       const isLow = item.status === 'low_stock';
                       const isOut = item.status === 'out_of_stock';
@@ -431,7 +431,9 @@ export function StockPage() {
                         <tr
                           key={item.variantId}
                           onClick={() => openVariantDrawer(item)}
-                          className="hover:bg-surface-strong/60 transition-colors cursor-pointer"
+                          className={`hover:bg-white/[0.06] active:bg-primary/[0.12] transition-colors cursor-pointer ${
+                            selectedVariant?.variantId === item.variantId ? 'bg-primary/10' : ''
+                          }`}
                         >
                           <td className="p-4">
                             <p className="font-bold text-text">{item.productName}</p>
@@ -768,9 +770,9 @@ export function StockPage() {
                       <th className="p-4 text-center">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border/60">
+                  <tbody className="divide-y divide-border">
                     {purchases.map((p) => (
-                      <tr key={p._id} className="hover:bg-surface-strong/60 transition-colors">
+                      <tr key={p._id} className="hover:bg-white/[0.06] active:bg-primary/[0.12] transition-colors">
                         <td className="p-4 font-mono font-bold text-text">{p.purchaseNo}</td>
                         <td className="p-4 font-medium text-text">{p.supplierId?.name || 'Supplier'}</td>
                         <td className="p-4 font-mono text-muted">{p.supplierInvoiceNo}</td>

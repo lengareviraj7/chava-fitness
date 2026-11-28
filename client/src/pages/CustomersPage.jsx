@@ -409,9 +409,9 @@ function CustomerLedgerModal({ customer, onClose }) {
                     <th className="text-right p-3">Balance After</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className="divide-y divide-border">
                   {ledger.map((entry) => (
-                    <tr key={entry._id} className="hover:bg-surface-strong transition-colors">
+                    <tr key={entry._id} className="hover:bg-white/[0.06] active:bg-primary/[0.12] transition-colors">
                       <td className="p-3 text-muted">
                         {new Date(entry.createdAt).toLocaleDateString('en-IN', {
                           day: '2-digit',

@@ -53,6 +53,22 @@
     color: #B6F23B;
   }
 
+  /* Global Table Row Hover & Active High-Contrast Invariants */
+  table tbody tr {
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  table tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+  table tbody tr:active {
+    background-color: rgba(182, 242, 59, 0.10);
+  }
+
+  /* Safeguard: Overwrite any accidental opaque white hover */
+  .hover\:bg-surface-strong\/60:hover {
+    background-color: rgba(255, 255, 255, 0.06) !important;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: var(--bg); }

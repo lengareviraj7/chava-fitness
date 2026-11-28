@@ -1069,14 +1069,14 @@ export function BillingPage() {
 
                   {/* Cash Tendered & Change if Cash */}
                   {paymentMode === 'cash' && (Number(paidRupees) || 0) > 0 && (
-                    <div className="space-y-1.5 bg-surface/60 p-2.5 rounded-xl border border-border">
+                    <div className="space-y-1.5 bg-[#0D140F] p-2.5 rounded-xl border border-border">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-semibold text-muted uppercase tracking-wider">
                           Cash Tendered (₹)
                         </label>
                         {Number(cashTendered) > (Number(paidRupees) || 0) && (
                           <span className="text-[11px] font-mono font-bold text-primary">
-                            Change Due: ₹{(Number(cashTendered) - (Number(paidRupees) || 0)).toFixed(2)}
+                            Change Due: {formatINR(Math.max(0, rupeesToPaise(Number(cashTendered) || 0) - rupeesToPaise(Number(paidRupees) || 0)))}
                           </span>
                         )}
                       </div>
@@ -1311,9 +1311,9 @@ export function BillingPage() {
                     <th className="p-4 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
+                <tbody className="divide-y divide-border">
                   {billsHistory.map((b) => (
-                    <tr key={b._id} className="hover:bg-surface-strong/60 transition-colors">
+                    <tr key={b._id} className="hover:bg-white/[0.06] active:bg-primary/[0.12] transition-colors">
                       <td className="p-4 font-mono font-bold text-text">{b.billNo}</td>
                       <td className="p-4 text-xs text-muted">{new Date(b.createdAt).toLocaleString('en-IN')}</td>
                       <td className="p-4 text-text">{b.customerSnapshot?.name || 'Walk-in'}</td>
